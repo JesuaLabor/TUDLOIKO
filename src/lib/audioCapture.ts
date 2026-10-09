@@ -184,18 +184,34 @@ export class AudioCaptureManager {
   }
 
   // ── Stop capture ────────────────────────────────────────────────────────────
-  stop(): void {
+  async stop(flush: boolean = true): Promise<void> {
     if (this.vadTimer) { clearInterval(this.vadTimer); this.vadTimer = null }
     if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null }
     if (this.maxTimer) { clearTimeout(this.maxTimer); this.maxTimer = null }
 
+    if (this.recorder && this.recorder.state === 'recording') {
+      try {
+        this.recorder.requestData()
+      } catch {}
+    }
+
+    // Brief delay to ensure last data chunk delivered to buffer
+    await new Promise((r) => setTimeout(r, 80))
+
+    if (flush && this.chunksBuffer.length > 0) {
+      const combinedBlob = new Blob(this.chunksBuffer, { type: this.currentMimeType })
+      if (combinedBlob.size > 500 && this.onChunkCb) {
+        this.onChunkCb(combinedBlob, this.currentMimeType)
+      }
+    }
+
     if (this.recorder && this.recorder.state !== 'inactive') {
-      this.recorder.stop()
+      try { this.recorder.stop() } catch {}
     }
     this.recorder = null
 
     if (this.audioCtx) {
-      this.audioCtx.close()
+      try { await this.audioCtx.close() } catch {}
       this.audioCtx = null
     }
     this.analyser = null
