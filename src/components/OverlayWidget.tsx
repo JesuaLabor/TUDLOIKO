@@ -34,7 +34,7 @@ interface OverlayWidgetProps {
   isClickThrough: boolean
   onToggleClickThrough: () => void
   onAddSuggestion: (text: string) => void
-  onStartStreamingSuggestion: () => string
+  onStartStreamingSuggestion: (questionText?: string) => string
   onUpdateStreamingSuggestion: (id: string, text: string, done: boolean) => void
   onClearSuggestions: () => void
   // Live Audio & STT
@@ -43,6 +43,7 @@ interface OverlayWidgetProps {
   captureMode: 'manual' | 'auto'
   transcriptEntries: TranscriptEntry[]
   isProcessingAudio: boolean
+  liveInterimText?: string
   audioDeviceLabel: string
   onToggleRecord: () => void
   onToggleCaptureMode: () => void
@@ -88,6 +89,7 @@ export default function OverlayWidget({
   captureMode,
   transcriptEntries,
   isProcessingAudio,
+  liveInterimText,
   audioDeviceLabel,
   onToggleRecord,
   onToggleCaptureMode,
@@ -231,8 +233,13 @@ export default function OverlayWidget({
                 {/* Suggestion Feed */}
                 <SuggestionFeed
                   suggestions={suggestions}
-                  isStreaming={isStreaming || isProcessingAudio}
+                  isStreaming={isStreaming}
+                  isListening={isListening}
+                  isProcessingAudio={isProcessingAudio}
+                  audioLevel={audioLevel}
+                  liveInterimText={liveInterimText}
                   hasApiKey={!!settings.apiKey}
+                  onSelectPracticeQuestion={onSelectQuestionForPractice}
                 />
                 <div className="h-px bg-border mx-4" />
                 <ManualPrompt

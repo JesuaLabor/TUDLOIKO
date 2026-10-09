@@ -8,7 +8,7 @@ interface ManualPromptProps {
   context: GeminiContext
   isStreaming: boolean
   setIsStreaming: (v: boolean) => void
-  onStartStreamingSuggestion: () => string
+  onStartStreamingSuggestion: (questionText?: string) => string
   onUpdateStreamingSuggestion: (id: string, text: string, done: boolean) => void
   noApiKey: boolean
   onGoToSettings: () => void
@@ -45,7 +45,7 @@ export default function ManualPrompt({
     setPrompt('')
     setIsStreaming(true)
 
-    const id = onStartStreamingSuggestion()
+    const id = onStartStreamingSuggestion(trimmed)
     let accumulated = ''
 
     const client = getGeminiClient(apiKey, context)
