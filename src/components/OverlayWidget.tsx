@@ -59,6 +59,10 @@ interface OverlayWidgetProps {
   debrief: InterviewDebrief | null
   onDebriefGenerated: (debrief: InterviewDebrief) => void
   onSelectQuestionForPractice: (q: string) => void
+  isMonitorSource?: boolean
+  onToggleAudioSource?: () => void
+  onSwitchToMonitor?: () => void
+  onSwitchToMic?: () => void
 }
 
 export default function OverlayWidget({
@@ -99,6 +103,10 @@ export default function OverlayWidget({
   debrief,
   onDebriefGenerated,
   onSelectQuestionForPractice,
+  isMonitorSource,
+  onToggleAudioSource,
+  onSwitchToMonitor,
+  onSwitchToMic,
 }: OverlayWidgetProps) {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [showNotesDrawer, setShowNotesDrawer] = useState(false)
@@ -143,7 +151,7 @@ export default function OverlayWidget({
 
       {!isMinimized && (
         <>
-          {/* ── Audio Controls Strip with Speech Telemetry ─────────── */}
+          {/* ── Audio Controls Strip with Speech Telemetry & Source Toggle ── */}
           <AudioControls
             isListening={isListening}
             captureMode={captureMode}
@@ -153,6 +161,8 @@ export default function OverlayWidget({
             onToggleMode={onToggleCaptureMode}
             isProcessing={isProcessingAudio}
             speechStats={speechStats}
+            isMonitorSource={isMonitorSource}
+            onToggleSource={onToggleAudioSource}
           />
 
           {/* ── Tab Navigation ──────────────────────────────────────── */}
@@ -244,6 +254,9 @@ export default function OverlayWidget({
                 <TranscriptPanel
                   entries={transcriptEntries}
                   isListening={isListening}
+                  isMonitorSource={isMonitorSource}
+                  onSwitchToMonitor={onSwitchToMonitor}
+                  onSwitchToMic={onSwitchToMic}
                 />
                 {transcriptEntries.length > 0 && (
                   <div className="p-2 border-t border-border flex gap-2">

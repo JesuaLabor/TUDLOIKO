@@ -11,6 +11,8 @@ interface AudioControlsProps {
   onToggleMode: () => void
   isProcessing: boolean
   speechStats?: SpeechAnalyticsResult
+  isMonitorSource?: boolean
+  onToggleSource?: () => void
 }
 
 // ─── Amplitude Visualizer (canvas) ───────────────────────────────────────────
@@ -76,6 +78,8 @@ export default function AudioControls({
   onToggleMode,
   isProcessing,
   speechStats,
+  isMonitorSource,
+  onToggleSource,
 }: AudioControlsProps) {
   const paceColor = {
     optimal: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
@@ -128,14 +132,48 @@ export default function AudioControls({
               {isListening
                 ? isProcessing
                   ? '⏳ Processing…'
-                  : '🎙 Capturing audio…'
+                  : isMonitorSource
+                    ? '📻 Capturing system audio…'
+                    : '🎙 Capturing mic audio…'
                 : deviceLabel
-                  ? `📻 ${deviceLabel.slice(0, 24)}`
+                  ? `${isMonitorSource ? '📻' : '🎙'} ${deviceLabel.slice(0, 24)}`
                   : 'No device selected'
               }
             </p>
           </div>
         </div>
+
+        {/* ── Audio Source Toggle (Mic vs System Audio) ────────────── */}
+        {onToggleSource && (
+          <button
+            onClick={onToggleSource}
+            title={
+              isMonitorSource
+                ? 'Capturing System Audio (YouTube, Zoom, Meet). Click to switch to Physical Mic.'
+                : 'Capturing Physical Mic. Click to switch to System Audio (YouTube, Zoom, Meet).'
+            }
+            className={`
+              flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold
+              border transition-all duration-150 active:scale-95 flex-shrink-0
+              ${isMonitorSource
+                ? 'bg-gem-blue/20 text-gem-blue border-gem-blue/35 hover:bg-gem-blue/30 shadow-sm'
+                : 'bg-white/5 text-text-muted border-border hover:text-text-secondary'
+              }
+            `}
+          >
+            {isMonitorSource ? (
+              <>
+                <Radio size={10} className="text-gem-blue animate-pulse" />
+                <span>📻 System Audio</span>
+              </>
+            ) : (
+              <>
+                <Mic size={10} />
+                <span>🎙 Mic</span>
+              </>
+            )}
+          </button>
+        )}
 
         {/* ── Speech Telemetry: WPM & Fillers ──────────────────────── */}
         {speechStats && (speechStats.wpm > 0 || speechStats.totalFillers > 0) && (

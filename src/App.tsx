@@ -4,6 +4,7 @@ import { useLocalStorage } from './hooks/useStorage'
 import type { GeminiContext } from './lib/gemini'
 import { getGeminiClient, matchStoryWithGemini } from './lib/gemini'
 import { AudioCaptureManager } from './lib/audioCapture'
+import type { AudioDevice } from './lib/audioCapture'
 import { GeminiAudioProcessor, buildContextSummary } from './lib/stt'
 import type { TranscriptEntry } from './lib/stt'
 import type { Tab } from './components/TabNav'
@@ -60,6 +61,16 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [settings, setSettings] = useLocalStorage<AppSettings>('tudloiko-settings', DEFAULT_SETTINGS)
   const [context, setContext] = useLocalStorage<GeminiContext>('tudloiko-context', {})
+
+  const updateSettings = useCallback(
+    (patch: Partial<AppSettings>) => setSettings((prev) => ({ ...prev, ...patch })),
+    [setSettings]
+  )
+  const updateContext = useCallback(
+    (patch: Partial<GeminiContext>) => setContext((prev) => ({ ...prev, ...patch })),
+    [setContext]
+  )
+
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [isMinimized, setIsMinimized] = useState(false)
   const [isClickThrough, setIsClickThrough] = useState(false)
@@ -255,13 +266,70 @@ export default function App() {
     return () => { captureRef.current?.stop() }
   }, [])
 
+  // ── Audio devices enumeration & source switching ────────────────────────────
+  const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
+
+  const loadAudioDevices = useCallback(async () => {
+    try {
+      const devices = await AudioCaptureManager.listDevices()
+      setAudioDevices(devices)
+    } catch {
+      setAudioDevices([])
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAudioDevices()
+  }, [loadAudioDevices])
+
   // Audio device label
   useEffect(() => {
-    if (!settings.audioDeviceId) { setAudioDeviceLabel('Default Mic'); return }
-    AudioCaptureManager.listDevices().then((devices) => {
-      const found = devices.find((d) => d.deviceId === settings.audioDeviceId)
-      setAudioDeviceLabel(found?.label ?? 'Selected Device')
-    }).catch(() => {})
+    if (!settings.audioDeviceId) {
+      setAudioDeviceLabel('Default Mic')
+      return
+    }
+    const found = audioDevices.find((d) => d.deviceId === settings.audioDeviceId)
+    setAudioDeviceLabel(found?.label ?? 'Selected Device')
+  }, [settings.audioDeviceId, audioDevices])
+
+  const currentDevice = audioDevices.find((d) => d.deviceId === settings.audioDeviceId)
+  const isMonitorSource = !!currentDevice?.isMonitor || audioDeviceLabel.toLowerCase().includes('monitor')
+
+  const handleSwitchToMonitor = useCallback(() => {
+    const monitorDevice = audioDevices.find((d) => d.isMonitor)
+    if (monitorDevice) {
+      updateSettings({ audioDeviceId: monitorDevice.deviceId })
+    } else {
+      AudioCaptureManager.listDevices().then((devices) => {
+        setAudioDevices(devices)
+        const found = devices.find((d) => d.isMonitor)
+        if (found) updateSettings({ audioDeviceId: found.deviceId })
+      })
+    }
+  }, [audioDevices, updateSettings])
+
+  const handleSwitchToMic = useCallback(() => {
+    const micDevice = audioDevices.find((d) => !d.isMonitor)
+    updateSettings({ audioDeviceId: micDevice ? micDevice.deviceId : '' })
+  }, [audioDevices, updateSettings])
+
+  const handleToggleAudioSource = useCallback(() => {
+    if (isMonitorSource) {
+      handleSwitchToMic()
+    } else {
+      handleSwitchToMonitor()
+    }
+  }, [isMonitorSource, handleSwitchToMic, handleSwitchToMonitor])
+
+  // Restart capture if user switches device while active
+  useEffect(() => {
+    if (isListening) {
+      captureRef.current?.stop()
+      const t = setTimeout(() => {
+        startListening()
+      }, 200)
+      return () => clearTimeout(t)
+    }
   }, [settings.audioDeviceId])
 
   // ── Story Bank helpers ───────────────────────────────────────────────────────
@@ -342,15 +410,6 @@ export default function App() {
     setSpeechStats(DEFAULT_SPEECH_STATS)
   }, [])
 
-  const updateSettings = useCallback(
-    (patch: Partial<AppSettings>) => setSettings((prev) => ({ ...prev, ...patch })),
-    [setSettings]
-  )
-  const updateContext = useCallback(
-    (patch: Partial<GeminiContext>) => setContext((prev) => ({ ...prev, ...patch })),
-    [setContext]
-  )
-
   const handleToggleClickThrough = useCallback(async () => {
     const next = await window.electron?.toggleClickThrough()
     if (next !== undefined) setIsClickThrough(next)
@@ -398,6 +457,10 @@ export default function App() {
         debrief={debrief}
         onDebriefGenerated={setDebrief}
         onSelectQuestionForPractice={handleSelectQuestionForPractice}
+        isMonitorSource={isMonitorSource}
+        onToggleAudioSource={handleToggleAudioSource}
+        onSwitchToMonitor={handleSwitchToMonitor}
+        onSwitchToMic={handleSwitchToMic}
       />
     </div>
   )
