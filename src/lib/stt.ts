@@ -50,12 +50,24 @@ RULES for SUGGESTIONS:
 
 // ─── Parse TRANSCRIPT: / SUGGESTIONS: sections from Gemini response ───────────
 function parseSTTResponse(raw: string): STTResult {
-  const transcriptMatch = raw.match(/TRANSCRIPT:\s*(.+?)(?=SUGGESTIONS:|$)/is)
-  const suggestionsMatch = raw.match(/SUGGESTIONS:\s*([\s\S]+)/i)
+  // Match transcript section up to any variation of SUGGESTION header or end of output
+  const transcriptMatch = raw.match(/TRANSCRIPT:\s*([\s\S]+?)(?=\n*[\*\s]*SUGGESTION|$)/i)
+  const suggestionsMatch = raw.match(/SUGGESTIONS?[:\*\s]*\n*([\s\S]+)/i)
+
+  let transcript = transcriptMatch?.[1]?.trim() ?? raw.slice(0, 200).trim()
+  // Clean any trailing headers, markdown, or truncated suggestion tokens (e.g. '. SUG', 'SUGGESTIONS:')
+  transcript = transcript
+    .replace(/[\*\s]*SUGG?E?S?T?I?O?N?S?[:\s\*]*$/i, '')
+    .trim()
+
+  let suggestions = suggestionsMatch?.[1]?.trim() ?? ''
+  if (!transcriptMatch && suggestions) {
+    transcript = raw.replace(/SUGGESTIONS?[\s\S]*/i, '').replace(/TRANSCRIPT:\s*/i, '').trim()
+  }
 
   return {
-    transcript: transcriptMatch?.[1]?.trim() ?? raw.slice(0, 200).trim(),
-    suggestions: suggestionsMatch?.[1]?.trim() ?? '',
+    transcript,
+    suggestions,
     raw,
   }
 }
@@ -98,13 +110,10 @@ export class GeminiAudioProcessor {
     try {
       const base64Audio = await blobToBase64(audioBlob)
 
-      // Try models in order of stability & high quota limits
+      // Verified active Google models supporting multimodal audio input
       const candidateModels = [
         'gemini-3.5-flash',
-        'gemini-3.6-flash',
-        'gemini-3.7-flash',
-        'gemini-3.8-flash',
-        'gemini-2.5-flash-lite',
+        'gemini-3.5-flash-lite',
       ]
       let lastErr: unknown = null
 

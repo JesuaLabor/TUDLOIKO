@@ -112,9 +112,12 @@ export default function App() {
     const envKey = (import.meta.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '') as string
     if (envKey) {
       setSettings((prev) => ({ ...prev, apiKey: envKey }))
-    } else if (window.electron?.getEnvApiKey) {
+    }
+    if (window.electron?.getEnvApiKey) {
       window.electron.getEnvApiKey().then((key) => {
-        if (key) setSettings((prev) => ({ ...prev, apiKey: key }))
+        if (key && key.trim()) {
+          setSettings((prev) => ({ ...prev, apiKey: key.trim() }))
+        }
       })
     }
 
