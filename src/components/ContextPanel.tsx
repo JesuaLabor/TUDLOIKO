@@ -8,8 +8,10 @@ interface ContextPanelProps {
   updateContext: (patch: Partial<GeminiContext>) => void
 }
 
+type ContextFieldKey = 'position' | 'companyInfo' | 'jobDescription' | 'resume'
+
 interface FieldConfig {
-  key: keyof GeminiContext
+  key: ContextFieldKey
   label: string
   placeholder: string
   icon: typeof FileText

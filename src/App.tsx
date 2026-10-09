@@ -2,9 +2,18 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import OverlayWidget from './components/OverlayWidget'
 import { useLocalStorage } from './hooks/useStorage'
 import type { GeminiContext } from './lib/gemini'
+import { getGeminiClient, matchStoryWithGemini } from './lib/gemini'
 import { AudioCaptureManager } from './lib/audioCapture'
 import { GeminiAudioProcessor, buildContextSummary } from './lib/stt'
 import type { TranscriptEntry } from './lib/stt'
+import type { Tab } from './components/TabNav'
+import type {
+  StoryBankItem,
+  InterviewDebrief,
+  SpeechAnalyticsResult,
+} from './types/copilot'
+import { SpeechAnalyticsTracker } from './lib/speechAnalytics'
+import { BackendClient } from './lib/backend'
 
 export interface Suggestion {
   id: string
@@ -37,17 +46,37 @@ const DEFAULT_SETTINGS: AppSettings = {
   vadSensitivity: 'medium',
 }
 
+const DEFAULT_SPEECH_STATS: SpeechAnalyticsResult = {
+  totalFillers: 0,
+  fillerCounts: {},
+  wpm: 0,
+  paceStatus: 'optimal',
+  totalWords: 0,
+}
+
 export default function App() {
-  // ── Phase 1 state ───────────────────────────────────────────────────────────
+  // ── Core Copilot State ──────────────────────────────────────────────────────
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [settings, setSettings] = useLocalStorage<AppSettings>('tudloiko-settings', DEFAULT_SETTINGS)
   const [context, setContext] = useLocalStorage<GeminiContext>('tudloiko-context', {})
-  const [activeTab, setActiveTab] = useState<'chat' | 'transcript' | 'context' | 'settings'>('chat')
+  const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [isMinimized, setIsMinimized] = useState(false)
   const [isClickThrough, setIsClickThrough] = useState(false)
 
-  // ── Phase 2 state ───────────────────────────────────────────────────────────
+  // ── Lifecycle & Analytics State ─────────────────────────────────────────────
+  const [stories, setStories] = useLocalStorage<StoryBankItem[]>('tudloiko-stories', [])
+  const [matchedStory, setMatchedStory] = useState<{
+    matchedStory: StoryBankItem | null
+    starCue: string
+    reason: string
+  } | null>(null)
+  const [liveNotes, setLiveNotes] = useLocalStorage<string>('tudloiko-live-notes', '')
+  const [debrief, setDebrief] = useLocalStorage<InterviewDebrief | null>('tudloiko-debrief', null)
+  const [speechStats, setSpeechStats] = useState<SpeechAnalyticsResult>(DEFAULT_SPEECH_STATS)
+  const speechTrackerRef = useRef(new SpeechAnalyticsTracker())
+
+  // ── Audio & STT State ───────────────────────────────────────────────────────
   const [isListening, setIsListening] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([])
@@ -59,7 +88,7 @@ export default function App() {
   const processorRef = useRef<GeminiAudioProcessor | null>(null)
   const transcriptBufferRef = useRef<string[]>([])
 
-  // ── Sync initial click-through state & load API key from .env ─────────────
+  // ── Initial setup & backend sync ────────────────────────────────────────────
   useEffect(() => {
     window.electron?.getClickThrough().then(setIsClickThrough).catch(() => {})
 
@@ -72,7 +101,26 @@ export default function App() {
         if (key) setSettings((prev) => ({ ...prev, apiKey: key }))
       })
     }
+
+    // Try fetching stories from backend DB if any
+    BackendClient.getStories().then((backendStories) => {
+      if (backendStories && backendStories.length > 0) {
+        setStories((prev) => {
+          const ids = new Set(prev.map((s) => s.id))
+          const merged = [...prev]
+          backendStories.forEach((bs) => {
+            if (!ids.has(bs.id)) merged.push(bs)
+          })
+          return merged
+        })
+      }
+    }).catch(() => {})
   }, [])
+
+  // Keep Gemini context stories up to date
+  useEffect(() => {
+    setContext((prev) => ({ ...prev, stories }))
+  }, [stories])
 
   // ── Build/update Gemini audio processor when API key changes ─────────────────
   useEffect(() => {
@@ -101,16 +149,32 @@ export default function App() {
         setIsProcessingAudio(false)
         const isNoSpeech = result.transcript.toLowerCase().includes('(no speech)')
 
-        // Add to transcript
+        // Add to transcript & track speech analytics
         if (!isNoSpeech && result.transcript.trim()) {
           const entry: TranscriptEntry = {
             id: `${Date.now()}-${Math.random()}`,
             text: result.transcript,
             timestamp: Date.now(),
-            speaker: 'unknown', // can be refined with diarization later
+            speaker: 'unknown',
           }
           setTranscriptEntries((prev) => [...prev, entry])
           transcriptBufferRef.current = [...transcriptBufferRef.current, result.transcript].slice(-20)
+
+          // Update real-time pacing & filler counts
+          const stats = speechTrackerRef.current.processUtterance(result.transcript, settings.chunkIntervalMs)
+          setSpeechStats(stats)
+
+          // Auto-match against Story Bank if it sounds like a prompt or question
+          const isQuestion =
+            result.transcript.includes('?') ||
+            /\b(tell me|describe|how did you|what was|explain|why did)\b/i.test(result.transcript)
+          if (isQuestion && stories.length > 0) {
+            matchStoryWithGemini(result.transcript, stories, settings.apiKey).then((match) => {
+              if (match.matchedStory) {
+                setMatchedStory(match)
+              }
+            }).catch(() => {})
+          }
         }
 
         // Add suggestions if we got any
@@ -133,7 +197,7 @@ export default function App() {
         ])
       }
     )
-  }, [settings.apiKey, context])
+  }, [settings.apiKey, settings.chunkIntervalMs, context, stories])
 
   // ── Start / Stop recording ───────────────────────────────────────────────────
   const startListening = useCallback(async () => {
@@ -144,10 +208,7 @@ export default function App() {
     manager
       .onChunk(handleAudioChunk)
       .onLevel(setAudioLevel)
-      .onSilence(() => {
-        // In auto mode, silence means we've heard a complete utterance — nothing extra needed
-        // (chunks are already being sent on the interval timer)
-      })
+      .onSilence(() => {})
       .onError((err) => {
         console.error('[AudioCapture]', err)
         setIsListening(false)
@@ -160,8 +221,6 @@ export default function App() {
       silenceThreshold: VAD_THRESHOLDS[settings.vadSensitivity ?? 'medium'],
     })
     setIsListening(true)
-
-    // Switch to transcript tab so user sees the live feed
     setActiveTab('transcript')
   }, [handleAudioChunk, settings])
 
@@ -184,7 +243,7 @@ export default function App() {
     })
   }, [])
 
-  // Auto mode: start listening automatically when mode switches to auto
+  // Auto mode trigger
   useEffect(() => {
     if (captureMode === 'auto' && !isListening && settings.apiKey) {
       startListening()
@@ -196,7 +255,7 @@ export default function App() {
     return () => { captureRef.current?.stop() }
   }, [])
 
-  // ── Update audio device label when deviceId changes ──────────────────────────
+  // Audio device label
   useEffect(() => {
     if (!settings.audioDeviceId) { setAudioDeviceLabel('Default Mic'); return }
     AudioCaptureManager.listDevices().then((devices) => {
@@ -204,6 +263,53 @@ export default function App() {
       setAudioDeviceLabel(found?.label ?? 'Selected Device')
     }).catch(() => {})
   }, [settings.audioDeviceId])
+
+  // ── Story Bank helpers ───────────────────────────────────────────────────────
+  const handleSaveStory = useCallback((story: StoryBankItem) => {
+    setStories((prev) => [story, ...prev])
+  }, [setStories])
+
+  const handleDeleteStory = useCallback((id: number | string) => {
+    setStories((prev) => prev.filter((s) => s.id !== id))
+    if (typeof id === 'number') {
+      BackendClient.deleteStory(id).catch(() => {})
+    }
+  }, [setStories])
+
+  // ── Question practice helper from Prep tab ──────────────────────────────────
+  const handleSelectQuestionForPractice = useCallback((question: string) => {
+    setActiveTab('chat')
+    // Stream suggestions immediately for this question
+    if (settings.apiKey) {
+      const client = getGeminiClient(settings.apiKey, context)
+      const id = `${Date.now()}-${Math.random()}`
+      setSuggestions((prev) => [
+        ...prev,
+        { id, text: '', timestamp: Date.now(), isStreaming: true },
+      ])
+      setIsStreaming(true)
+      client.streamSuggestion(
+        question,
+        (acc) => {
+          setSuggestions((prev) =>
+            prev.map((s) => (s.id === id ? { ...s, text: acc } : s))
+          )
+        },
+        (final) => {
+          setSuggestions((prev) =>
+            prev.map((s) => (s.id === id ? { ...s, text: final, isStreaming: false } : s))
+          )
+          setIsStreaming(false)
+        },
+        (err) => {
+          setSuggestions((prev) =>
+            prev.map((s) => (s.id === id ? { ...s, text: `⚠ Error: ${err.message}`, isStreaming: false } : s))
+          )
+          setIsStreaming(false)
+        }
+      )
+    }
+  }, [settings.apiKey, context])
 
   // ── Suggestion helpers ───────────────────────────────────────────────────────
   const addSuggestion = useCallback((text: string) => {
@@ -232,9 +338,10 @@ export default function App() {
   const clearTranscript = useCallback(() => {
     setTranscriptEntries([])
     transcriptBufferRef.current = []
+    speechTrackerRef.current.reset()
+    setSpeechStats(DEFAULT_SPEECH_STATS)
   }, [])
 
-  // ── Settings helpers ─────────────────────────────────────────────────────────
   const updateSettings = useCallback(
     (patch: Partial<AppSettings>) => setSettings((prev) => ({ ...prev, ...patch })),
     [setSettings]
@@ -269,7 +376,7 @@ export default function App() {
         onStartStreamingSuggestion={startStreamingSuggestion}
         onUpdateStreamingSuggestion={updateStreamingSuggestion}
         onClearSuggestions={clearSuggestions}
-        // Phase 2 props
+        // Live Audio & STT
         isListening={isListening}
         audioLevel={audioLevel}
         captureMode={captureMode}
@@ -279,6 +386,18 @@ export default function App() {
         onToggleRecord={toggleRecord}
         onToggleCaptureMode={toggleCaptureMode}
         onClearTranscript={clearTranscript}
+        // Lifecycle & Analytics props
+        stories={stories}
+        onSaveStory={handleSaveStory}
+        onDeleteStory={handleDeleteStory}
+        matchedStory={matchedStory}
+        onDismissMatchedStory={() => setMatchedStory(null)}
+        liveNotes={liveNotes}
+        setLiveNotes={setLiveNotes}
+        speechStats={speechStats}
+        debrief={debrief}
+        onDebriefGenerated={setDebrief}
+        onSelectQuestionForPractice={handleSelectQuestionForPractice}
       />
     </div>
   )

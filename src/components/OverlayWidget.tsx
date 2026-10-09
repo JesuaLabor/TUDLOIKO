@@ -2,14 +2,22 @@ import { useState } from 'react'
 import type { AppSettings, Suggestion } from '../App'
 import type { GeminiContext } from '../lib/gemini'
 import type { TranscriptEntry } from '../lib/stt'
+import type {
+  StoryBankItem,
+  InterviewDebrief,
+  SpeechAnalyticsResult,
+} from '../types/copilot'
 import TitleBar from './TitleBar'
-import TabNav from './TabNav'
+import TabNav, { type Tab } from './TabNav'
 import SuggestionFeed from './SuggestionFeed'
 import ManualPrompt from './ManualPrompt'
-import ContextPanel from './ContextPanel'
 import SettingsPanel from './SettingsPanel'
 import TranscriptPanel from './TranscriptPanel'
 import AudioControls from './AudioControls'
+import StoryBankPanel from './StoryBankPanel'
+import PrepPanel from './PrepPanel'
+import DebriefPanel from './DebriefPanel'
+import { BookMarked, StickyNote, X, ChevronRight } from 'lucide-react'
 
 interface OverlayWidgetProps {
   suggestions: Suggestion[]
@@ -19,8 +27,8 @@ interface OverlayWidgetProps {
   updateSettings: (patch: Partial<AppSettings>) => void
   context: GeminiContext
   updateContext: (patch: Partial<GeminiContext>) => void
-  activeTab: 'chat' | 'transcript' | 'context' | 'settings'
-  setActiveTab: (tab: 'chat' | 'transcript' | 'context' | 'settings') => void
+  activeTab: Tab
+  setActiveTab: (tab: Tab) => void
   isMinimized: boolean
   setIsMinimized: (v: boolean) => void
   isClickThrough: boolean
@@ -29,7 +37,7 @@ interface OverlayWidgetProps {
   onStartStreamingSuggestion: () => string
   onUpdateStreamingSuggestion: (id: string, text: string, done: boolean) => void
   onClearSuggestions: () => void
-  // Phase 2
+  // Live Audio & STT
   isListening: boolean
   audioLevel: number
   captureMode: 'manual' | 'auto'
@@ -39,6 +47,18 @@ interface OverlayWidgetProps {
   onToggleRecord: () => void
   onToggleCaptureMode: () => void
   onClearTranscript: () => void
+  // Lifecycle & Speech Analytics props
+  stories: StoryBankItem[]
+  onSaveStory: (story: StoryBankItem) => void
+  onDeleteStory: (id: number | string) => void
+  matchedStory: { matchedStory: StoryBankItem | null; starCue: string; reason: string } | null
+  onDismissMatchedStory: () => void
+  liveNotes: string
+  setLiveNotes: (notes: string) => void
+  speechStats: SpeechAnalyticsResult
+  debrief: InterviewDebrief | null
+  onDebriefGenerated: (debrief: InterviewDebrief) => void
+  onSelectQuestionForPractice: (q: string) => void
 }
 
 export default function OverlayWidget({
@@ -68,8 +88,20 @@ export default function OverlayWidget({
   onToggleRecord,
   onToggleCaptureMode,
   onClearTranscript,
+  stories,
+  onSaveStory,
+  onDeleteStory,
+  matchedStory,
+  onDismissMatchedStory,
+  liveNotes,
+  setLiveNotes,
+  speechStats,
+  debrief,
+  onDebriefGenerated,
+  onSelectQuestionForPractice,
 }: OverlayWidgetProps) {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [showNotesDrawer, setShowNotesDrawer] = useState(false)
 
   const fontSizeClass = {
     sm: 'text-sm',
@@ -111,7 +143,7 @@ export default function OverlayWidget({
 
       {!isMinimized && (
         <>
-          {/* ── Audio Controls strip (always visible when not minimized) ── */}
+          {/* ── Audio Controls Strip with Speech Telemetry ─────────── */}
           <AudioControls
             isListening={isListening}
             captureMode={captureMode}
@@ -120,15 +152,73 @@ export default function OverlayWidget({
             onToggleRecord={onToggleRecord}
             onToggleMode={onToggleCaptureMode}
             isProcessing={isProcessingAudio}
+            speechStats={speechStats}
           />
 
           {/* ── Tab Navigation ──────────────────────────────────────── */}
-          <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabNav
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            storyCount={stories.length}
+            fillerCount={speechStats.totalFillers}
+          />
 
           {/* ── Tab Content ─────────────────────────────────────────── */}
           <div className="flex-1 overflow-hidden flex flex-col">
+            {/* 1. COACH TAB */}
             {activeTab === 'chat' && (
               <div className="flex-1 overflow-hidden flex flex-col">
+                {/* Matched Story Banner (if surfaced by live STT) */}
+                {matchedStory?.matchedStory && (
+                  <div className="mx-3 mt-2 p-2 rounded-xl bg-accent/15 border border-accent/35 flex items-start justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="space-y-0.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 text-accent text-[10px] font-bold uppercase tracking-wider">
+                        <BookMarked size={11} /> Matched From Story Bank
+                      </div>
+                      <p className="text-xs font-semibold text-text-primary truncate">
+                        {matchedStory.matchedStory.title}
+                      </p>
+                      {matchedStory.starCue && (
+                        <p className="text-[10px] text-text-secondary leading-snug line-clamp-2">
+                          💡 <span className="text-accent font-medium">STAR Cue:</span> {matchedStory.starCue}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={onDismissMatchedStory}
+                      className="p-1 text-text-muted hover:text-text-primary rounded hover:bg-white/5"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Live Scratchpad Quick Toggle */}
+                <div className="px-3 pt-1.5 flex items-center justify-between text-[10px] text-text-muted">
+                  <button
+                    onClick={() => setShowNotesDrawer(!showNotesDrawer)}
+                    className="flex items-center gap-1 text-text-muted hover:text-text-secondary font-medium transition-colors"
+                  >
+                    <StickyNote size={10} className="text-amber-400" />
+                    <span>Live Notes / Scratchpad</span>
+                    <ChevronRight size={10} className={`transform transition-transform ${showNotesDrawer ? 'rotate-90' : ''}`} />
+                  </button>
+                  {liveNotes && <span className="text-[9px] text-amber-400/80">Draft saved</span>}
+                </div>
+
+                {showNotesDrawer && (
+                  <div className="px-3 pt-1 pb-2">
+                    <textarea
+                      value={liveNotes}
+                      onChange={(e) => setLiveNotes(e.target.value)}
+                      placeholder="Jot interviewer names, company stack, or questions to ask back at the end…"
+                      rows={2}
+                      className="glass-input text-[11px] w-full resize-none bg-surface-base/90"
+                    />
+                  </div>
+                )}
+
+                {/* Suggestion Feed */}
                 <SuggestionFeed
                   suggestions={suggestions}
                   isStreaming={isStreaming || isProcessingAudio}
@@ -148,6 +238,7 @@ export default function OverlayWidget({
               </div>
             )}
 
+            {/* 2. LIVE TRANSCRIPT TAB */}
             {activeTab === 'transcript' && (
               <div className="flex-1 overflow-hidden flex flex-col">
                 <TranscriptPanel
@@ -155,22 +246,57 @@ export default function OverlayWidget({
                   isListening={isListening}
                 />
                 {transcriptEntries.length > 0 && (
-                  <div className="p-2 border-t border-border">
+                  <div className="p-2 border-t border-border flex gap-2">
                     <button
                       onClick={onClearTranscript}
-                      className="btn-ghost w-full justify-center text-xs text-red-400/70 hover:text-red-400"
+                      className="btn-ghost flex-1 justify-center text-xs text-red-400/70 hover:text-red-400"
                     >
                       Clear transcript
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('debrief')}
+                      className="px-3 py-1 rounded bg-accent/20 border border-accent/35 text-accent text-xs font-semibold hover:bg-accent/30"
+                    >
+                      Go to Debrief →
                     </button>
                   </div>
                 )}
               </div>
             )}
 
-            {activeTab === 'context' && (
-              <ContextPanel context={context} updateContext={updateContext} />
+            {/* 3. STORIES TAB */}
+            {activeTab === 'stories' && (
+              <StoryBankPanel
+                stories={stories}
+                onSaveStory={onSaveStory}
+                onDeleteStory={onDeleteStory}
+                apiKey={settings.apiKey}
+              />
             )}
 
+            {/* 4. PREP TAB */}
+            {activeTab === 'prep' && (
+              <PrepPanel
+                context={context}
+                updateContext={updateContext}
+                apiKey={settings.apiKey}
+                onSelectQuestionForPractice={onSelectQuestionForPractice}
+              />
+            )}
+
+            {/* 5. DEBRIEF TAB */}
+            {activeTab === 'debrief' && (
+              <DebriefPanel
+                transcripts={transcriptEntries}
+                liveNotes={liveNotes}
+                speechStats={speechStats}
+                apiKey={settings.apiKey}
+                existingDebrief={debrief}
+                onDebriefGenerated={onDebriefGenerated}
+              />
+            )}
+
+            {/* 6. SETTINGS TAB */}
             {activeTab === 'settings' && (
               <SettingsPanel settings={settings} updateSettings={updateSettings} />
             )}
