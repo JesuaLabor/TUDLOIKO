@@ -76,6 +76,9 @@ export class AudioCaptureManager {
     } = config
 
     this.captureMode = mode
+    this.chunksBuffer = []
+    this.hasSpokenInCurrentUtterance = false
+    this.isSilent = true
 
     try {
       // Get audio stream
@@ -194,26 +197,23 @@ export class AudioCaptureManager {
     if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null }
     if (this.maxTimer) { clearTimeout(this.maxTimer); this.maxTimer = null }
 
-    if (this.recorder && this.recorder.state === 'recording') {
-      try {
-        this.recorder.requestData()
-      } catch {}
-    }
-
-    // Brief delay to ensure last data chunk delivered to buffer
-    await new Promise((r) => setTimeout(r, 80))
-
-    if (flush && this.chunksBuffer.length > 0) {
-      const combinedBlob = new Blob(this.chunksBuffer, { type: this.currentMimeType })
-      if (combinedBlob.size > 500 && this.onChunkCb) {
-        this.onChunkCb(combinedBlob, this.currentMimeType)
-      }
-    }
-
-    if (this.recorder && this.recorder.state !== 'inactive') {
-      try { this.recorder.stop() } catch {}
-    }
+    const recorder = this.recorder
     this.recorder = null
+    this.isCapturing = false
+
+    // Properly await the recorder's onstop event to ensure all trailing data chunks are flushed
+    if (recorder && recorder.state !== 'inactive') {
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve()
+        try {
+          recorder.stop()
+        } catch {
+          resolve()
+        }
+      })
+      recorder.ondataavailable = null
+      recorder.onstop = null
+    }
 
     if (this.audioCtx) {
       try { await this.audioCtx.close() } catch {}
@@ -226,10 +226,21 @@ export class AudioCaptureManager {
       this.stream = null
     }
 
-    this.chunksBuffer = []
-    this.isCapturing = false
-    this.isSilent = true
-    this.hasSpokenInCurrentUtterance = false
+    if (flush && this.chunksBuffer.length > 0) {
+      const combinedBlob = new Blob(this.chunksBuffer, { type: this.currentMimeType })
+      this.chunksBuffer = []
+      this.hasSpokenInCurrentUtterance = false
+      this.isSilent = true
+
+      // Only dispatch if the recorded audio has valid content
+      if (combinedBlob.size >= 800 && this.onChunkCb) {
+        this.onChunkCb(combinedBlob, this.currentMimeType)
+      }
+    } else {
+      this.chunksBuffer = []
+      this.hasSpokenInCurrentUtterance = false
+      this.isSilent = true
+    }
   }
 
   // ── Event registration ──────────────────────────────────────────────────────
@@ -244,11 +255,18 @@ export class AudioCaptureManager {
 // ─── Blob → base64 helper ─────────────────────────────────────────────────────
 export async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (!blob || blob.size === 0) {
+      resolve('')
+      return
+    }
     const reader = new FileReader()
     reader.onloadend = () => {
       const result = reader.result as string
-      // Strip "data:audio/...;base64," prefix
-      resolve(result.split(',')[1])
+      if (!result || !result.includes(',')) {
+        resolve('')
+        return
+      }
+      resolve(result.split(',')[1] || '')
     }
     reader.onerror = reject
     reader.readAsDataURL(blob)

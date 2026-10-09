@@ -107,8 +107,22 @@ export class GeminiAudioProcessor {
     }
     this.isProcessing = true
 
+    if (audioBlob.size < 800) {
+      this.isProcessing = false
+      onDone({ transcript: '(no speech)', suggestions: '', raw: '' })
+      return
+    }
+
     try {
       const base64Audio = await blobToBase64(audioBlob)
+      if (!base64Audio || base64Audio.length < 50) {
+        this.isProcessing = false
+        onDone({ transcript: '(no speech)', suggestions: '', raw: '' })
+        return
+      }
+
+      // Clean mimeType to canonical standard format without codecs parameters
+      const cleanMime = (mimeType.split(';')[0].trim() || 'audio/webm') as 'audio/webm' | 'audio/ogg' | 'audio/wav'
 
       // Verified active Google models supporting multimodal audio input
       const candidateModels = [
@@ -132,7 +146,7 @@ export class GeminiAudioProcessor {
           const result = await model.generateContent([
             {
               inlineData: {
-                mimeType: mimeType as 'audio/webm' | 'audio/webm;codecs=opus' | 'audio/ogg',
+                mimeType: cleanMime,
                 data: base64Audio,
               },
             },
