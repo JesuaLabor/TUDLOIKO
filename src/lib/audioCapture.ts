@@ -11,6 +11,7 @@ export interface CaptureConfig {
   silenceThreshold?: number  // 0–255 RMS amplitude below which counts as silence (default: 10)
   silenceDurationMs?: number // silence delay to trigger utterance end (default: 1500ms)
   maxUtteranceMs?: number    // force flush utterance after N ms (default: 8000ms)
+  mode?: 'manual' | 'auto'   // 'manual' waits for Stop; 'auto' flushes on silence pauses
 }
 
 export type ChunkCallback = (blob: Blob, mimeType: string) => void
@@ -35,6 +36,7 @@ export class AudioCaptureManager {
 
   private isSilent = true
   private isCapturing = false
+  private captureMode: 'manual' | 'auto' = 'manual'
 
   // Smart VAD Utterance Buffer
   private chunksBuffer: Blob[] = []
@@ -70,7 +72,10 @@ export class AudioCaptureManager {
       silenceThreshold = 10,
       silenceDurationMs = 1500,
       maxUtteranceMs = 8000,
+      mode = 'manual',
     } = config
+
+    this.captureMode = mode
 
     try {
       // Get audio stream
@@ -133,25 +138,25 @@ export class AudioCaptureManager {
 
         // Voice Activity Detection logic
         if (rms >= silenceThreshold) {
-          // Sound detected
-          if (!this.hasSpokenInCurrentUtterance) {
-            this.hasSpokenInCurrentUtterance = true
-            // Set max utterance timer to prevent single clip getting too huge
+          this.hasSpokenInCurrentUtterance = true
+          this.isSilent = false
+          if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer)
+            this.silenceTimer = null
+          }
+
+          // In 'auto' mode only: flush if single utterance exceeds max length
+          if (this.captureMode === 'auto') {
             if (!this.maxTimer) {
               this.maxTimer = setTimeout(() => {
                 this.flushUtterance()
               }, maxUtteranceMs)
             }
           }
-
-          this.isSilent = false
-          if (this.silenceTimer) {
-            clearTimeout(this.silenceTimer)
-            this.silenceTimer = null
-          }
         } else {
           // Silence detected
-          if (!this.isSilent && this.hasSpokenInCurrentUtterance) {
+          // In 'auto' mode only: automatically flush utterance on pause
+          if (this.captureMode === 'auto' && !this.isSilent && this.hasSpokenInCurrentUtterance) {
             this.isSilent = true
             this.silenceTimer = setTimeout(() => {
               this.flushUtterance()

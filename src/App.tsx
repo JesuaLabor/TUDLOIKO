@@ -306,6 +306,7 @@ export default function App() {
       deviceId: settings.audioDeviceId || undefined,
       chunkIntervalMs: settings.chunkIntervalMs,
       silenceThreshold: VAD_THRESHOLDS[settings.vadSensitivity ?? 'medium'],
+      mode: captureMode,
     })
     setIsListening(true)
 

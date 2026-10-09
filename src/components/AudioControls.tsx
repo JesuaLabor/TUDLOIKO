@@ -100,26 +100,30 @@ export default function AudioControls({
         {/* ── Record / Stop button ─────────────────────────────────── */}
         <button
           onClick={onToggleRecord}
-          title={isListening ? 'Stop recording' : 'Start recording'}
+          title={
+            isListening
+              ? 'Stop listening and generate answer talking points immediately (1 API request)'
+              : 'Click when the interviewer begins speaking'
+          }
           className={`
-            flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold
-            transition-all duration-200 active:scale-95 flex-shrink-0
+            flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-semibold
+            transition-all duration-200 active:scale-95 flex-shrink-0 shadow-sm
             ${isListening
-              ? 'bg-red-500/20 text-red-400 border border-red-500/35 hover:bg-red-500/30'
-              : 'bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30'
+              ? 'bg-red-500/25 text-red-300 border border-red-500/50 hover:bg-red-500/35 ring-1 ring-red-500/30'
+              : 'bg-accent/20 text-accent border border-accent/35 hover:bg-accent/30'
             }
           `}
         >
           {isListening ? (
             <>
-              <span className="recording-dot" />
+              <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
               <MicOff size={11} />
-              Stop
+              <span>Stop to Answer</span>
             </>
           ) : (
             <>
               <Mic size={11} />
-              Record
+              <span>Record Question</span>
             </>
           )}
         </button>
@@ -131,13 +135,13 @@ export default function AudioControls({
             <p className="text-[10px] text-text-muted truncate leading-tight">
               {isListening
                 ? isProcessing
-                  ? '⏳ Processing…'
+                  ? '⏳ Transcribing & generating answer…'
                   : isMonitorSource
-                    ? '📻 Capturing system audio…'
-                    : '🎙 Capturing mic audio…'
+                    ? '📻 Listening to system audio… Click "Stop to Answer" when done'
+                    : '🎙 Listening to question… Click "Stop to Answer" when done'
                 : deviceLabel
-                  ? `${isMonitorSource ? '📻' : '🎙'} ${deviceLabel.slice(0, 24)}`
-                  : 'No device selected'
+                  ? `${isMonitorSource ? '📻' : '🎙'} ${deviceLabel.slice(0, 24)} (Ready)`
+                  : 'Ready to record'
               }
             </p>
           </div>

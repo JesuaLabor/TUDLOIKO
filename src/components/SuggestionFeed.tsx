@@ -339,7 +339,7 @@ export default function SuggestionFeed({
                 </div>
               ) : (
                 <p className="text-[10px] text-text-muted">
-                  Listening to audio. Click <span className="text-red-400 font-semibold">Stop</span> when the interviewer finishes to generate answer instantly.
+                  Recording question. Click <span className="text-red-400 font-semibold">Stop to Answer</span> when the interviewer finishes to generate talking points directly.
                 </p>
               )}
             </div>
