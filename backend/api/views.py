@@ -38,6 +38,23 @@ def clean_json_text(text: str) -> str:
         text = re.sub(r'\s*```$', '', text)
     return text.strip()
 
+FALLBACK_MODELS = [
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.8-flash',
+    'gemini-2.5-flash-lite',
+]
+
+def generate_content_with_fallback(client, contents):
+    last_err = None
+    for model_name in FALLBACK_MODELS:
+        try:
+            return client.models.generate_content(model=model_name, contents=contents)
+        except Exception as e:
+            last_err = e
+    raise last_err
+
 @api_view(['GET'])
 def health_check(request):
     return Response({'status': 'ok', 'service': 'TUDLOIKO Backend', 'version': '1.1.0'})
@@ -83,10 +100,7 @@ Return a valid JSON object ONLY with this exact schema (no markdown fences, no e
 }}
 """
         try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
+            response = generate_content_with_fallback(client, prompt)
             data = json.loads(clean_json_text(response.text))
             return Response(data)
         except Exception as e:
@@ -134,10 +148,7 @@ Return a valid JSON array ONLY (no markdown fences) containing objects with this
 ]
 """
         try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
+            response = generate_content_with_fallback(client, prompt)
             questions = json.loads(clean_json_text(response.text))
             application.predicted_questions = questions
             application.save(update_fields=['predicted_questions', 'updated_at'])
@@ -187,10 +198,7 @@ Return a valid JSON object ONLY:
 }}
 """
         try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
+            response = generate_content_with_fallback(client, prompt)
             result = json.loads(clean_json_text(response.text))
             story_id = result.get('story_id')
             matched = next((s for s in stories if s['id'] == story_id), stories[0])
@@ -246,10 +254,7 @@ Generate a comprehensive post-interview debrief. Return a valid JSON object ONLY
 }}
 """
         try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
+            response = generate_content_with_fallback(client, prompt)
             data = json.loads(clean_json_text(response.text))
             debrief, _ = InterviewDebrief.objects.update_or_create(
                 session=session,
@@ -288,10 +293,7 @@ def gemini_proxy(request):
 
     try:
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
+        response = generate_content_with_fallback(client, prompt)
         return Response({'response': response.text})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

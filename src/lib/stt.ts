@@ -93,7 +93,13 @@ export class GeminiAudioProcessor {
       const base64Audio = await blobToBase64(audioBlob)
 
       // Try models in order of stability & high quota limits
-      const candidateModels = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro-latest']
+      const candidateModels = [
+        'gemini-3.5-flash',
+        'gemini-3.6-flash',
+        'gemini-3.7-flash',
+        'gemini-3.8-flash',
+        'gemini-2.5-flash-lite',
+      ]
       let lastErr: unknown = null
 
       for (const modelName of candidateModels) {

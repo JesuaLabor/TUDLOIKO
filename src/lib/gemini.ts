@@ -60,7 +60,7 @@ export class GeminiClient {
 
   constructor(config: GeminiConfig) {
     this.genAI = new GoogleGenerativeAI(config.apiKey)
-    this.modelName = config.model ?? 'gemini-1.5-flash'
+    this.modelName = config.model ?? 'gemini-3.5-flash'
   }
 
   setContext(ctx: GeminiContext) {
@@ -76,7 +76,13 @@ export class GeminiClient {
     onDone: (fullText: string) => void,
     onError: (err: Error) => void
   ): Promise<void> {
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro-latest']
+    const modelsToTry = [
+      'gemini-3.5-flash',
+      'gemini-3.6-flash',
+      'gemini-3.7-flash',
+      'gemini-3.8-flash',
+      'gemini-2.5-flash-lite',
+    ]
     let lastError: unknown = null
 
     for (const modelName of modelsToTry) {
@@ -130,7 +136,7 @@ export async function refineStoryWithGemini(
   titleHint: string = ''
 ): Promise<Partial<StoryBankItem>> {
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
 
   const prompt = `
 You are TUDLOIKO Career Coach. Transform the following raw career experience notes into a structured STAR-method interview story.
@@ -162,7 +168,7 @@ export async function predictQuestionsWithGemini(
   apiKey: string
 ): Promise<PredictedQuestion[]> {
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
 
   const prompt = `
 You are TUDLOIKO AI Interview Prep Coach. Analyze the following target job role and candidate background:
@@ -203,7 +209,7 @@ export async function matchStoryWithGemini(
   if (!stories.length) return { matchedStory: null, starCue: '', reason: '' }
 
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
 
   const storiesSummary = stories.map((s, idx) => ({
     index: idx,
@@ -248,7 +254,7 @@ export async function generateDebriefWithGemini(
   apiKey: string
 ): Promise<InterviewDebrief> {
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' })
 
   const transcriptText = transcripts.map((t) => `[${t.speaker}]: ${t.text}`).join('\n')
 
