@@ -124,10 +124,10 @@ export class GeminiAudioProcessor {
       // Clean mimeType to canonical standard format without codecs parameters
       const cleanMime = (mimeType.split(';')[0].trim() || 'audio/webm') as 'audio/webm' | 'audio/ogg' | 'audio/wav'
 
-      // Verified active Google models supporting multimodal audio input
+      // Prioritize gemini-3.5-flash-lite for higher free-tier quota & ultra-low latency
       const candidateModels = [
-        'gemini-3.5-flash',
         'gemini-3.5-flash-lite',
+        'gemini-3.5-flash',
       ]
       let lastErr: unknown = null
 
@@ -159,10 +159,7 @@ export class GeminiAudioProcessor {
           return
         } catch (err) {
           lastErr = err
-          const errStr = String(err)
-          if (errStr.includes('429') || errStr.includes('Quota exceeded')) {
-            break // Quota error applies to all models for this key
-          }
+          // Continue to next candidate model (Google quotas can be per-model, e.g. gemini-3.5-flash daily limit vs flash-lite)
         }
       }
 
