@@ -271,12 +271,17 @@ export default function App() {
       (err) => {
         setIsProcessingAudio(false)
         console.error('[STT error]', err)
-        const id = `${Date.now()}-error`
         const errorMsg = err.message.startsWith('⚠') ? err.message : `⚠ Audio processing error: ${err.message}`
-        setSuggestions((prev) => [
-          ...prev,
-          { id, text: errorMsg, timestamp: Date.now() },
-        ])
+        setSuggestions((prev) => {
+          const last = prev[prev.length - 1]
+          if (last && last.text.includes('429 Rate Limit') && errorMsg.includes('429 Rate Limit')) {
+            return prev // Don't duplicate rate limit error cards
+          }
+          return [
+            ...prev,
+            { id: `${Date.now()}-error`, role: 'coach', text: errorMsg, timestamp: Date.now() },
+          ]
+        })
       }
     )
   }, [settings.apiKey, settings.chunkIntervalMs, context, stories])

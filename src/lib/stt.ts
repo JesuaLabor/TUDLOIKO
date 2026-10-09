@@ -64,6 +64,7 @@ function parseSTTResponse(raw: string): STTResult {
 export class GeminiAudioProcessor {
   private genAI: GoogleGenerativeAI
   private isProcessing = false
+  private cooldownUntil = 0
 
   constructor(private apiKey: string) {
     this.genAI = new GoogleGenerativeAI(apiKey)
@@ -72,6 +73,7 @@ export class GeminiAudioProcessor {
   updateApiKey(key: string) {
     this.apiKey = key
     this.genAI = new GoogleGenerativeAI(key)
+    this.cooldownUntil = 0
   }
 
   /**
@@ -86,7 +88,11 @@ export class GeminiAudioProcessor {
     onDone: (result: STTResult) => void,
     onError: (err: Error) => void
   ): Promise<void> {
-    if (this.isProcessing) return // skip if previous chunk still processing
+    if (this.isProcessing) return
+    if (Date.now() < this.cooldownUntil) {
+      // In rate limit cooldown window; pause background attempts
+      return
+    }
     this.isProcessing = true
 
     try {
@@ -125,6 +131,7 @@ export class GeminiAudioProcessor {
           ])
 
           const raw = result.response.text()
+          this.cooldownUntil = 0 // Reset cooldown on successful response
           onDone(parseSTTResponse(raw))
           return
         } catch (err) {
@@ -140,7 +147,8 @@ export class GeminiAudioProcessor {
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('429') || msg.includes('Quota exceeded')) {
-        msg = '⚠ Gemini API Quota Exceeded (429 Rate Limit). The free tier allows 15 requests/min. Recording will resume shortly.'
+        this.cooldownUntil = Date.now() + 45000 // 45s backoff window
+        msg = '⚠ Gemini API Quota Exceeded (429 Rate Limit). The free tier allows 15 requests/min. Pausing background audio for 45s, or switch to Manual Record/Stop mode.'
       }
       onError(new Error(msg))
     } finally {
