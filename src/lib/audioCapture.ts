@@ -90,19 +90,30 @@ export class AudioCaptureManager {
       this.stream = await navigator.mediaDevices.getUserMedia(constraints)
 
       // Set up Web Audio API for VAD
-      this.audioCtx = new AudioContext()
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      this.audioCtx = new AudioCtx()
+      // iOS Safari starts AudioContext suspended — resume so the level meter / VAD works
+      if (this.audioCtx.state === 'suspended') {
+        try { await this.audioCtx.resume() } catch {}
+      }
       const source = this.audioCtx.createMediaStreamSource(this.stream)
       this.analyser = this.audioCtx.createAnalyser()
       this.analyser.fftSize = 512
       source.connect(this.analyser)
 
-      // Set up MediaRecorder
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : 'audio/ogg'
-      this.currentMimeType = mimeType
+      // Set up MediaRecorder — iOS Safari only supports MP4/AAC (no WebM/Ogg)
+      const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4;codecs=mp4a.40.2',
+        'audio/mp4',
+        'audio/aac',
+        'audio/ogg;codecs=opus',
+      ]
+      const supported = typeof MediaRecorder.isTypeSupported === 'function'
+        ? candidates.find((t) => MediaRecorder.isTypeSupported(t))
+        : undefined
+      this.currentMimeType = supported || ''
 
       this.initRecorder()
       this.isCapturing = true
@@ -163,7 +174,12 @@ export class AudioCaptureManager {
   private initRecorder(): void {
     if (!this.stream) return
 
-    this.recorder = new MediaRecorder(this.stream, { mimeType: this.currentMimeType })
+    this.recorder = this.currentMimeType
+      ? new MediaRecorder(this.stream, { mimeType: this.currentMimeType })
+      : new MediaRecorder(this.stream)
+    // Use the format the browser actually produces (e.g. audio/mp4 on iPhone)
+    if (this.recorder.mimeType) this.currentMimeType = this.recorder.mimeType
+    if (!this.currentMimeType) this.currentMimeType = 'audio/mp4'
 
     this.recorder.ondataavailable = (e) => {
       // NEVER drop chunks: the first chunk contains the essential EBML container header!

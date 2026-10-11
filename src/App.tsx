@@ -316,7 +316,10 @@ export default function App() {
     setIsListening(true)
 
     // Optional Web Speech API for real-time live interim word preview
-    const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+    // Skipped on iOS: Safari's SpeechRecognition grabs the mic and makes MediaRecorder capture silence
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    const SpeechRec = isIOS ? null : ((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition)
     if (SpeechRec) {
       try {
         const rec = new SpeechRec()

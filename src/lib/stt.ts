@@ -99,7 +99,9 @@ export class GeminiAudioProcessor {
       }
 
       // Clean mimeType to canonical standard format without codecs parameters
-      const cleanMime = (mimeType.split(';')[0].trim() || 'audio/webm') as 'audio/webm' | 'audio/ogg' | 'audio/wav'
+      // iOS Safari records AAC in an MP4 container (audio/mp4 or audio/x-m4a)
+      let cleanMime = (mimeType.split(';')[0].trim() || audioBlob.type.split(';')[0] || 'audio/webm').toLowerCase()
+      if (cleanMime === 'audio/x-m4a' || cleanMime === 'audio/m4a' || cleanMime === 'video/mp4') cleanMime = 'audio/mp4'
 
       // Prioritize gemini-3.5-flash-lite and flash-lite family for high free-tier quota & ultra-low latency
       const candidateModels = [
