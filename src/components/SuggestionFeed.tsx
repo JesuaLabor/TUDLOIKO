@@ -57,7 +57,7 @@ function renderFormattedText(text: string) {
 }
 
 // Render answer text with high-contrast glowing highlighted markdown bold (**phrase**)
-export function renderHighlightedSayThis(text?: string) {
+function renderHighlightedSayThis(text?: string) {
   if (!text) return null
   const parts = text.split(/(\*\*[^*]+\*\*)/g)
   return parts.map((part, index) => {
@@ -158,7 +158,7 @@ const CATEGORY_COLORS: Record<string, { badge: string }> = {
   'unclear': { badge: 'bg-orange-500/20 text-orange-300 border-orange-500/35' },
 }
 
-export function recoverMalformedCoachJson(raw: string): CoachCardData | null {
+function recoverMalformedCoachJson(raw: string): CoachCardData | null {
   if (!raw) return null
   const qMatch = raw.match(/"question_clean"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
   const catMatch = raw.match(/"category"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
@@ -215,7 +215,7 @@ export function recoverMalformedCoachJson(raw: string): CoachCardData | null {
   return null
 }
 
-export function tryParseCoachJson(raw: string): CoachCardData | null {
+function tryParseCoachJson(raw: string): CoachCardData | null {
   if (!raw) return null
   const cleaned = cleanJsonText(raw)
   const firstBrace = cleaned.indexOf('{')
@@ -1070,15 +1070,20 @@ export default function SuggestionFeed({
   hasApiKey,
   onSelectPracticeQuestion,
 }: SuggestionFeedProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll when new message arrives or streaming updates
+  // Auto-scroll inside feed container only — never scroll parent windows or ancestor layout
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
   }, [suggestions, isStreaming, isProcessingAudio, liveInterimText])
 
   return (
-    <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col">
+    <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2 flex flex-col">
       {suggestions.length === 0 && !isStreaming && !isListening && !isProcessingAudio ? (
         /* Empty state */
         <div className="flex flex-col items-center justify-center flex-1 gap-4 px-4 py-8 text-center my-auto">
@@ -1189,8 +1194,6 @@ export default function SuggestionFeed({
               )}
             </div>
           )}
-
-          <div ref={bottomRef} />
         </>
       )}
     </div>

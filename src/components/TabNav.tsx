@@ -27,7 +27,7 @@ const TABS: { id: Tab; label: string; icon: typeof MessageSquare }[] = [
 
 export default function TabNav({ activeTab, setActiveTab, storyCount }: TabNavProps) {
   return (
-    <div className="flex no-drag px-1.5 pt-1 gap-0.5 border-b border-border bg-surface-subtle/30 overflow-x-auto scrollbar-none">
+    <div className="flex no-drag px-1.5 pt-1 gap-0.5 border-b border-border bg-surface-subtle/30 overflow-x-auto scrollbar-none shrink-0">
       {TABS.map(({ id, label, icon: Icon }) => (
         <button
           key={id}

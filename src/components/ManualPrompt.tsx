@@ -79,7 +79,7 @@ export default function ManualPrompt({
   const charCount = prompt.length
 
   return (
-    <div className="no-drag p-3 space-y-2">
+    <div className="no-drag p-3 space-y-2 shrink-0">
       {/* Error banner */}
       {error && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs animate-fade-in">

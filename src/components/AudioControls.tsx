@@ -94,7 +94,7 @@ export default function AudioControls({
     : ''
 
   return (
-    <div className="no-drag border-b border-border bg-surface-subtle/60 px-3 py-1.5">
+    <div className="no-drag border-b border-border bg-surface-subtle/60 px-3 py-1.5 shrink-0">
       <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
 
         {/* ── Left Controls: Record + Source Toggle ───────────────── */}

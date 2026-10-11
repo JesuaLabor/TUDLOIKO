@@ -176,10 +176,10 @@ export default function OverlayWidget({
           />
 
           {/* ── Tab Content ─────────────────────────────────────────── */}
-          <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             {/* 1. COACH TAB */}
             {activeTab === 'chat' && (
-              <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                 {/* Matched Story Banner (if surfaced by live STT) */}
                 {matchedStory?.matchedStory && (
                   <div className="mx-3 mt-2 p-2 rounded-xl bg-accent/15 border border-accent/35 flex items-start justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-200">

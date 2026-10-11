@@ -25,14 +25,19 @@ export default function TranscriptPanel({
   onSwitchToMonitor,
   onSwitchToMic,
 }: TranscriptPanelProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
   }, [entries])
 
   return (
-    <div className="flex-1 overflow-y-auto flex flex-col">
+    <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col">
       {entries.length === 0 ? (
         /* Empty state */
         <div className="flex flex-col items-center justify-center flex-1 gap-3 px-6 py-6 text-center">
@@ -125,7 +130,6 @@ export default function TranscriptPanel({
               </div>
             )
           })}
-          <div ref={bottomRef} />
         </div>
       )}
     </div>

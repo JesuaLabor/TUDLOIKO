@@ -34,7 +34,7 @@ export default function TitleBar({
   return (
     <div
       className={`
-        drag-region flex items-center justify-between
+        drag-region flex items-center justify-between shrink-0
         px-4 py-3 border-b border-border
         ${isMinimized ? 'rounded-2xl border-b-0' : 'rounded-t-2xl'}
       `}
