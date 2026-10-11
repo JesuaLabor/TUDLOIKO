@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Sliders, Type, Mic, Info } from 'lucide-react'
+import { Sliders, Type, Mic, Info, KeyRound, Eye, EyeOff, Check, AlertCircle } from 'lucide-react'
 import type { AppSettings } from '../App'
 import { useElectronOpacity } from '../hooks/useStorage'
 import { AudioCaptureManager } from '../lib/audioCapture'
@@ -14,6 +14,7 @@ interface SettingsPanelProps {
 
 export default function SettingsPanel({ settings, updateSettings }: SettingsPanelProps) {
   const [opacity, setOpacity] = useElectronOpacity()
+  const [showApiKey, setShowApiKey] = useState(false)
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
   const [loadingDevices, setLoadingDevices] = useState(false)
   const [backendHealth, setBackendHealth] = useState<BackendHealth>({ status: 'offline' })
@@ -62,6 +63,55 @@ export default function SettingsPanel({ settings, updateSettings }: SettingsPane
         <h2 className="text-text-primary text-sm font-semibold">Settings</h2>
         <p className="text-text-muted text-xs mt-0.5">Configure your AI Interview Copilot</p>
       </div>
+
+      {/* ── Gemini API Key ────────────────────────────────────────── */}
+      <section className="space-y-2 p-3.5 rounded-xl bg-surface-card border border-border/80 shadow-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <KeyRound size={13} className="text-accent" />
+            <span className="section-label">Google Gemini API Key</span>
+          </div>
+          {settings.apiKey ? (
+            <span className="text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
+              <Check size={11} /> Configured
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1">
+              <AlertCircle size={11} /> Required
+            </span>
+          )}
+        </div>
+
+        <div className="relative">
+          <input
+            type={showApiKey ? 'text' : 'password'}
+            value={settings.apiKey || ''}
+            onChange={(e) => updateSettings({ apiKey: e.target.value.trim() })}
+            placeholder="AIzaSy..."
+            className="glass-input pr-9 font-mono text-[11px]"
+          />
+          <button
+            type="button"
+            onClick={() => setShowApiKey(!showApiKey)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors p-1"
+            title={showApiKey ? 'Hide API key' : 'Show API key'}
+          >
+            {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
+          </button>
+        </div>
+
+        <p className="text-[10px] text-text-muted leading-relaxed">
+          Stored locally in your browser/device. Get your key free at{' '}
+          <a
+            href="https://aistudio.google.com/app/apikey"
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent hover:underline font-medium"
+          >
+            Google AI Studio ↗
+          </a>
+        </p>
+      </section>
 
       {/* ── Audio Device ─────────────────────────────────────────── */}
       <section className="space-y-2">
