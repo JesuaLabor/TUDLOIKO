@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { Sparkles, LayoutDashboard, Smartphone, KeyRound } from 'lucide-react'
 import OverlayWidget from './components/OverlayWidget'
 import { useLocalStorage } from './hooks/useStorage'
 import type { GeminiContext } from './lib/gemini'
@@ -81,6 +82,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [isMinimized, setIsMinimized] = useState(false)
   const [isClickThrough, setIsClickThrough] = useState(false)
+  const [webLayoutMode, setWebLayoutMode] = useLocalStorage<'dashboard' | 'compact'>('tudloiko-web-layout', 'dashboard')
 
   // ── Lifecycle & Analytics State ─────────────────────────────────────────────
   const [stories, setStories] = useLocalStorage<StoryBankItem[]>('tudloiko-stories', [])
@@ -634,27 +636,76 @@ export default function App() {
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-[#080914] text-text-primary flex flex-col items-center justify-center p-2 sm:p-5 overflow-hidden">
+    <div className="relative h-screen h-[100dvh] w-full bg-[#070814] text-text-primary flex flex-col items-center p-2 sm:p-4 overflow-hidden">
       {/* Background ambient mesh lighting */}
-      <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[600px] h-[340px] bg-accent/20 blur-[130px] rounded-full" />
+      <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[340px] bg-accent/20 blur-[130px] rounded-full" />
       <div className="pointer-events-none absolute -bottom-32 right-10 w-[500px] h-[320px] bg-blue-600/15 blur-[140px] rounded-full" />
 
-      {/* Top status bar on web */}
-      <header className="w-full max-w-lg mb-2.5 flex items-center justify-between px-2 text-xs text-text-muted z-10">
+      {/* Top Header Bar on web */}
+      <header className={`w-full ${webLayoutMode === 'dashboard' ? 'max-w-5xl xl:max-w-6xl' : 'max-w-md sm:max-w-lg'} shrink-0 mb-2 flex items-center justify-between px-1 text-xs text-text-muted z-10 transition-all duration-300`}>
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-semibold text-text-secondary tracking-wide">TUDLOIKO</span>
-          <span className="px-1.5 py-0.5 rounded text-[10px] bg-accent/15 border border-accent/25 text-accent font-medium">
-            Cloudflare Pages Edition
+          <div className="w-5 h-5 rounded-md bg-accent/20 border border-accent/30 flex items-center justify-center">
+            <Sparkles size={11} className="text-accent" />
+          </div>
+          <span className="font-bold text-text-primary tracking-wide text-xs sm:text-sm">TUDLOIKO</span>
+          <span className="px-1.5 py-0.5 rounded text-[10px] bg-accent/15 border border-accent/25 text-accent font-medium hidden xs:inline-block">
+            Web Edition
           </span>
         </div>
-        <div className="text-[11px] text-text-muted hidden sm:inline-flex items-center gap-1.5">
-          <span>AI Interview Copilot</span>
+
+        <div className="flex items-center gap-2">
+          {/* Gemini API Key status chip */}
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+              settings.apiKey
+                ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20'
+                : 'bg-amber-500/10 border-amber-500/25 text-amber-400 hover:bg-amber-500/20 animate-pulse'
+            }`}
+            title={settings.apiKey ? 'Gemini API Key connected. Click to edit in Settings.' : 'API Key missing. Click to configure in Settings.'}
+          >
+            <KeyRound size={10} />
+            <span>{settings.apiKey ? 'API Connected' : 'Setup API Key'}</span>
+          </button>
+
+          {/* Web View Mode Toggle: Dashboard (Wide) vs Compact (Overlay) */}
+          <div className="flex items-center p-0.5 rounded-lg bg-white/5 border border-white/10 text-[10px]">
+            <button
+              onClick={() => setWebLayoutMode('dashboard')}
+              title="Wide Dashboard View (roomy layout for desktop practice)"
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-md transition-all ${
+                webLayoutMode === 'dashboard'
+                  ? 'bg-accent/30 text-white font-semibold shadow-xs'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <LayoutDashboard size={11} />
+              <span className="hidden sm:inline">Wide</span>
+            </button>
+            <button
+              onClick={() => setWebLayoutMode('compact')}
+              title="Compact Copilot View (narrow overlay style)"
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-md transition-all ${
+                webLayoutMode === 'compact'
+                  ? 'bg-accent/30 text-white font-semibold shadow-xs'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <Smartphone size={11} />
+              <span className="hidden sm:inline">Compact</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Copilot Card container */}
-      <main className="w-full max-w-lg h-[92vh] max-h-[760px] flex flex-col rounded-2xl shadow-2xl shadow-black/80 border border-white/10 overflow-hidden backdrop-blur-xl relative z-10">
+      <main
+        className={`
+          w-full flex-1 min-h-0 flex flex-col rounded-2xl shadow-2xl shadow-black/80
+          border border-white/10 overflow-hidden backdrop-blur-xl relative z-10 transition-all duration-300
+          ${webLayoutMode === 'dashboard' ? 'max-w-5xl xl:max-w-6xl' : 'max-w-md sm:max-w-lg'}
+        `}
+      >
         {widget}
       </main>
     </div>

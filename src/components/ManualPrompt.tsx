@@ -97,7 +97,7 @@ export default function ManualPrompt({
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={isStreaming || noApiKey}
-          rows={3}
+          rows={2}
           maxLength={2000}
           placeholder={
             noApiKey

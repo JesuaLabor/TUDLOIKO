@@ -95,41 +95,75 @@ export default function AudioControls({
 
   return (
     <div className="no-drag border-b border-border bg-surface-subtle/60 px-3 py-1.5">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
 
-        {/* ── Record / Stop button ─────────────────────────────────── */}
-        <button
-          onClick={onToggleRecord}
-          title={
-            isListening
-              ? 'Stop listening and generate answer talking points immediately (1 API request)'
-              : 'Click when the interviewer begins speaking'
-          }
-          className={`
-            flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-semibold
-            transition-all duration-200 active:scale-95 flex-shrink-0 shadow-sm
-            ${isListening
-              ? 'bg-red-500/25 text-red-300 border border-red-500/50 hover:bg-red-500/35 ring-1 ring-red-500/30'
-              : 'bg-accent/20 text-accent border border-accent/35 hover:bg-accent/30'
+        {/* ── Left Controls: Record + Source Toggle ───────────────── */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            onClick={onToggleRecord}
+            title={
+              isListening
+                ? 'Stop listening and generate answer talking points immediately (1 API request)'
+                : 'Click when the interviewer begins speaking'
             }
-          `}
-        >
-          {isListening ? (
-            <>
-              <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
-              <MicOff size={11} />
-              <span>Stop to Answer</span>
-            </>
-          ) : (
-            <>
-              <Mic size={11} />
-              <span>Record Question</span>
-            </>
-          )}
-        </button>
+            className={`
+              flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-[11px] font-semibold
+              transition-all duration-200 active:scale-95 flex-shrink-0 shadow-sm
+              ${isListening
+                ? 'bg-red-500/25 text-red-300 border border-red-500/50 hover:bg-red-500/35 ring-1 ring-red-500/30'
+                : 'bg-accent/20 text-accent border border-accent/35 hover:bg-accent/30'
+              }
+            `}
+          >
+            {isListening ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
+                <MicOff size={11} />
+                <span>Stop to Answer</span>
+              </>
+            ) : (
+              <>
+                <Mic size={11} />
+                <span>Record Question</span>
+              </>
+            )}
+          </button>
 
-        {/* ── Amplitude visualizer ─────────────────────────────────── */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          {onToggleSource && (
+            <button
+              onClick={onToggleSource}
+              title={
+                isMonitorSource
+                  ? 'Capturing System Audio (YouTube, Zoom, Meet). Click to switch to Physical Mic.'
+                  : 'Capturing Physical Mic. Click to switch to System Audio (YouTube, Zoom, Meet).'
+              }
+              className={`
+                flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold
+                border transition-all duration-150 active:scale-95 flex-shrink-0
+                ${isMonitorSource
+                  ? 'bg-gem-blue/20 text-gem-blue border-gem-blue/35 hover:bg-gem-blue/30 shadow-sm'
+                  : 'bg-white/5 text-text-muted border-border hover:text-text-secondary'
+                }
+              `}
+            >
+              {isMonitorSource ? (
+                <>
+                  <Radio size={10} className="text-gem-blue animate-pulse" />
+                  <span className="hidden xs:inline">📻 System Audio</span>
+                  <span className="xs:hidden">📻 Sys</span>
+                </>
+              ) : (
+                <>
+                  <Mic size={10} />
+                  <span>🎙 Mic</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* ── Center: Visualizer + Device status ───────────────────── */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-[120px] sm:min-w-[160px] max-w-sm">
           <AmplitudeBar level={audioLevel} isListening={isListening} />
           <div className="flex-1 min-w-0 overflow-hidden">
             <p className="text-[10px] text-text-muted truncate leading-tight">
@@ -147,81 +181,50 @@ export default function AudioControls({
           </div>
         </div>
 
-        {/* ── Audio Source Toggle (Mic vs System Audio) ────────────── */}
-        {onToggleSource && (
+        {/* ── Right: Speech Telemetry + Mode Toggle ────────────────── */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {speechStats && (speechStats.wpm > 0 || speechStats.totalFillers > 0) && (
+            <div className="flex items-center gap-1.5">
+              {speechStats.wpm > 0 && (
+                <span
+                  title={`Pacing: ${speechStats.wpm} words per minute (${speechStats.paceStatus})`}
+                  className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-bold ${paceColor}`}
+                >
+                  <Gauge size={9} />
+                  {speechStats.wpm} WPM
+                </span>
+              )}
+
+              {speechStats.totalFillers > 0 && (
+                <span
+                  title={fillerTooltip ? `Detected fillers: ${fillerTooltip}` : 'Filler words detected'}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-bold text-amber-400 bg-amber-500/10 border-amber-500/25 cursor-help"
+                >
+                  <AlertTriangle size={9} />
+                  {speechStats.totalFillers} {speechStats.totalFillers === 1 ? 'filler' : 'fillers'}
+                </span>
+              )}
+            </div>
+          )}
+
           <button
-            onClick={onToggleSource}
-            title={
-              isMonitorSource
-                ? 'Capturing System Audio (YouTube, Zoom, Meet). Click to switch to Physical Mic.'
-                : 'Capturing Physical Mic. Click to switch to System Audio (YouTube, Zoom, Meet).'
-            }
+            onClick={onToggleMode}
+            title={`Mode: ${captureMode === 'manual' ? 'Manual (click to record)' : 'Auto (continuous)'}`}
             className={`
-              flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold
-              border transition-all duration-150 active:scale-95 flex-shrink-0
-              ${isMonitorSource
-                ? 'bg-gem-blue/20 text-gem-blue border-gem-blue/35 hover:bg-gem-blue/30 shadow-sm'
+              flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium
+              border transition-all duration-150 active:scale-95
+              ${captureMode === 'auto'
+                ? 'bg-gem-green/15 text-gem-green border-gem-green/25'
                 : 'bg-white/5 text-text-muted border-border hover:text-text-secondary'
               }
             `}
           >
-            {isMonitorSource ? (
-              <>
-                <Radio size={10} className="text-gem-blue animate-pulse" />
-                <span>📻 System Audio</span>
-              </>
-            ) : (
-              <>
-                <Mic size={10} />
-                <span>🎙 Mic</span>
-              </>
-            )}
-          </button>
-        )}
-
-        {/* ── Speech Telemetry: WPM & Fillers ──────────────────────── */}
-        {speechStats && (speechStats.wpm > 0 || speechStats.totalFillers > 0) && (
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {speechStats.wpm > 0 && (
-              <span
-                title={`Pacing: ${speechStats.wpm} words per minute (${speechStats.paceStatus})`}
-                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-bold ${paceColor}`}
-              >
-                <Gauge size={9} />
-                {speechStats.wpm} WPM
-              </span>
-            )}
-
-            {speechStats.totalFillers > 0 && (
-              <span
-                title={fillerTooltip ? `Detected fillers: ${fillerTooltip}` : 'Filler words detected'}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-bold text-amber-400 bg-amber-500/10 border-amber-500/25 cursor-help"
-              >
-                <AlertTriangle size={9} />
-                {speechStats.totalFillers} {speechStats.totalFillers === 1 ? 'filler' : 'fillers'}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* ── Mode toggle ──────────────────────────────────────────── */}
-        <button
-          onClick={onToggleMode}
-          title={`Mode: ${captureMode === 'manual' ? 'Manual (click to record)' : 'Auto (continuous)'}`}
-          className={`
-            flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium
-            border transition-all duration-150 active:scale-95 flex-shrink-0
-            ${captureMode === 'auto'
-              ? 'bg-gem-green/15 text-gem-green border-gem-green/25'
-              : 'bg-white/5 text-text-muted border-border hover:text-text-secondary'
+            {captureMode === 'auto'
+              ? <><Radio size={10} /> Auto</>
+              : <><Repeat size={10} /> Manual</>
             }
-          `}
-        >
-          {captureMode === 'auto'
-            ? <><Radio size={10} /> Auto</>
-            : <><Repeat size={10} /> Manual</>
-          }
-        </button>
+          </button>
+        </div>
       </div>
     </div>
   )

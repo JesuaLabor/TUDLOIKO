@@ -133,7 +133,7 @@ export default function OverlayWidget({
       className={`
         glass-card flex flex-col w-full rounded-2xl overflow-hidden
         transition-all duration-300
-        ${isMinimized ? 'h-12' : 'h-screen'}
+        ${isMinimized ? 'h-12' : 'h-full flex-1 min-h-0'}
         ${fontSizeClass}
       `}
       style={{ opacity: settings.opacity }}

@@ -360,9 +360,9 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
         : 'border-border/80 hover:border-accent/40'
     }`}>
       {/* Top Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="w-5 h-5 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <div className="w-5 h-5 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
             <Bot size={12} className="text-accent" />
           </div>
           <span className="text-[10px] font-bold tracking-wider text-accent uppercase">
@@ -388,7 +388,7 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleCopyAll}
             title="Copy all 3 answer options and main point"
@@ -493,7 +493,7 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
       )}
 
       {/* 3 Answer Options Cards */}
-      <div className="space-y-2.5 pt-0.5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-0.5">
         {data.options.map((opt, idx) => {
           const isShort = opt.label.toLowerCase().includes('short')
           const isBalanced = opt.label.toLowerCase().includes('balanced')
@@ -508,11 +508,11 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
             : 'bg-accent/20 text-accent border-accent/30'
 
           const lengthHint = isShort
-            ? '≤ 20 words · Quick & punchy'
+            ? '≤ 20 words · Punchy'
             : isBalanced
             ? '≤ 40 words · Conversational'
             : isDetailed
-            ? '≤ 70 words · In-depth details'
+            ? '≤ 70 words · In-depth'
             : ''
 
           const wordCount = opt.say_this.trim().split(/\s+/).filter(Boolean).length
@@ -520,19 +520,19 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
           return (
             <div
               key={idx}
-              className="p-3 rounded-xl bg-white/[0.03] border border-border/70 hover:border-accent/40 hover:bg-white/[0.05] transition-all space-y-1.5 group/opt"
+              className="p-3 rounded-xl bg-white/[0.03] border border-border/70 hover:border-accent/40 hover:bg-white/[0.05] transition-all flex flex-col justify-between space-y-2 group/opt"
             >
               {/* Option Subheader */}
-              <div className="flex items-center justify-between text-[10px]">
-                <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between text-[10px] gap-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className={`px-2 py-0.5 rounded-full font-bold border ${badgeClass}`}>
                     {opt.label}
                   </span>
                   <span className="text-text-muted font-mono text-[9px]">{lengthHint}</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <span className="text-[9px] font-mono text-text-muted">
-                    {wordCount} words
+                    {wordCount}w
                   </span>
                   <button
                     onClick={() => handleCopyOption(opt.say_this, idx)}
@@ -555,7 +555,7 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
               </div>
 
               {/* Ready-to-say Spoken Answer with luminous bold keyword highlights */}
-              <p className="text-[13px] text-text-primary font-medium leading-relaxed selection:bg-accent/30">
+              <p className="text-[13px] text-text-primary font-medium leading-relaxed selection:bg-accent/30 flex-1">
                 "{renderHighlightedSayThis(opt.say_this)}"
               </p>
             </div>
@@ -591,9 +591,9 @@ function StructuredCoachCard({ data, timestamp }: { data: CoachCardData; timesta
     const replyText = data.reply || data.body?.reply || 'I am doing well, thank you! Excited to be here today.'
     return (
       <div className="suggestion-enter mb-3 px-3.5 py-2.5 rounded-xl bg-surface-card/95 border border-emerald-500/30 shadow-sm space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="w-5 h-5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
               <Bot size={12} className="text-emerald-400" />
             </div>
             <span className="text-[10px] font-bold tracking-wider text-emerald-400 uppercase">
@@ -603,7 +603,7 @@ function StructuredCoachCard({ data, timestamp }: { data: CoachCardData; timesta
               Greeting / Small Talk
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleCopy}
               title="Copy reply"
@@ -643,9 +643,9 @@ function StructuredCoachCard({ data, timestamp }: { data: CoachCardData; timesta
   return (
     <div className="suggestion-enter mb-4 px-3.5 py-3 rounded-xl bg-surface-card/95 border border-border/80 shadow-md hover:border-accent/40 transition-all space-y-2.5">
       {/* Top Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="w-5 h-5 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <div className="w-5 h-5 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
             <Bot size={12} className="text-accent" />
           </div>
           <span className="text-[10px] font-bold tracking-wider text-accent uppercase">
@@ -666,7 +666,7 @@ function StructuredCoachCard({ data, timestamp }: { data: CoachCardData; timesta
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleCopy}
             title="Copy answer cues"
