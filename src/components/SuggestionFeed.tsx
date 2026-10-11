@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Suggestion } from '../App'
+import type { CoachCardData } from '../types/copilot'
+import { cleanJsonText } from '../lib/gemini'
 import {
   Sparkles,
   KeyRound,
@@ -13,6 +15,10 @@ import {
   Loader2,
   Mic,
   Volume2,
+  Clock,
+  Target,
+  AlertTriangle,
+  ShieldAlert,
 } from 'lucide-react'
 
 interface SuggestionFeedProps {
@@ -26,34 +32,50 @@ interface SuggestionFeedProps {
   onSelectPracticeQuestion?: (question: string) => void
 }
 
-// Parse bullet lines from Gemini output
 function parseBullets(text: string): string[] {
   return text
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => l.length > 0)
+    .filter((l) => l.length > 0 && !/^[{}\[\]",]+$/.test(l))
+}
+
+// Render text with markdown bold support (**keyword**)
+function renderFormattedText(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      const boldText = part.slice(2, -2)
+      return (
+        <strong key={index} className="font-semibold text-white/95">
+          {boldText}
+        </strong>
+      )
+    }
+    return <span key={index}>{part}</span>
+  })
 }
 
 // Highlight STAR tokens in coach lines
 function formatLine(line: string) {
+  const cleanLine = line.replace(/^[•\-\*]\s*/, '')
+
   // Check for STAR headers or bullets
-  const starMatch = line.match(/^(Situation|Task|Action|Result|S|T|A|R)\s*[:\-–]\s*(.+)/i)
+  const starMatch = cleanLine.match(/^(Situation|Task|Action|Result|S|T|A|R)\s*[:\-–]\s*(.+)/i)
   if (starMatch) {
     const label = starMatch[1].toUpperCase()
     const rest = starMatch[2]
     return (
       <span className="leading-relaxed">
-        <span className="inline-block px-1.5 py-0.2 mr-1.5 text-[10px] font-bold rounded bg-accent/20 text-accent border border-accent/30">
+        <span className="inline-block px-1.5 py-0.5 mr-1.5 text-[10px] font-bold rounded bg-accent/20 text-accent border border-accent/30 font-mono">
           {label}
         </span>
-        <span className="text-text-primary">{rest}</span>
+        <span className="text-text-primary">{renderFormattedText(rest)}</span>
       </span>
     )
   }
 
   // Normal bullet point or text
-  const cleanLine = line.replace(/^[•\-\*]\s*/, '')
-  return <span className="text-text-primary">{cleanLine}</span>
+  return <span className="text-text-primary leading-relaxed">{renderFormattedText(cleanLine)}</span>
 }
 
 function InterviewerMessageCard({ suggestion }: { suggestion: Suggestion }) {
@@ -88,7 +110,686 @@ function InterviewerMessageCard({ suggestion }: { suggestion: Suggestion }) {
   )
 }
 
+const TYPE_CONFIG: Record<string, { label: string; badge: string }> = {
+  small_talk: { label: 'Small Talk / Greeting', badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35' },
+  behavioral: { label: 'Behavioral', badge: 'bg-purple-500/20 text-purple-300 border-purple-500/35' },
+  technical_concept: { label: 'Technical Concept', badge: 'bg-blue-500/20 text-blue-300 border-blue-500/35' },
+  technical_problem: { label: 'Technical Problem', badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35' },
+  situational: { label: 'Situational', badge: 'bg-amber-500/20 text-amber-300 border-amber-500/35' },
+  motivational: { label: 'Motivational', badge: 'bg-rose-500/20 text-rose-300 border-rose-500/35' },
+  self_intro: { label: 'Elevator Pitch', badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35' },
+  strengths_weaknesses: { label: 'Strengths / Weaknesses', badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/35' },
+  salary_logistics: { label: 'Salary & Logistics', badge: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/35' },
+  no_experience: { label: 'Honest Bridge', badge: 'bg-slate-500/20 text-slate-300 border-slate-500/35' },
+  clarification_needed: { label: 'Clarify Question', badge: 'bg-orange-500/20 text-orange-300 border-orange-500/35' },
+  inappropriate: { label: 'Polite Redirect', badge: 'bg-red-500/20 text-red-300 border-red-500/35' },
+}
+
+const CATEGORY_COLORS: Record<string, { badge: string }> = {
+  'greeting / small talk': { badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35' },
+  'greeting': { badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35' },
+  'small talk': { badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35' },
+  'elevator pitch': { badge: 'bg-purple-500/20 text-purple-300 border-purple-500/35' },
+  'behavioral': { badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/35' },
+  'technical': { badge: 'bg-blue-500/20 text-blue-300 border-blue-500/35' },
+  'motivation': { badge: 'bg-rose-500/20 text-rose-300 border-rose-500/35' },
+  'salary': { badge: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/35' },
+  'unclear': { badge: 'bg-orange-500/20 text-orange-300 border-orange-500/35' },
+}
+
+export function recoverMalformedCoachJson(raw: string): CoachCardData | null {
+  if (!raw) return null
+  const qMatch = raw.match(/"question_clean"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+  const catMatch = raw.match(/"category"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+
+  const options: { label: string; say_this: string }[] = []
+
+  const shortMatch = raw.match(
+    /(?:"label"\s*:\s*"Short"[^}]*?"say_this"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"|"say_this"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"[^}]*?"label"\s*:\s*"Short"|"Short"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)")/i
+  )
+  if (shortMatch) {
+    const text = shortMatch[1] || shortMatch[2] || shortMatch[3]
+    if (text) options.push({ label: 'Short', say_this: text.replace(/\\"/g, '"').trim() })
+  }
+
+  const balancedMatch = raw.match(
+    /(?:"label"\s*:\s*"Balanced"[^}]*?"say_this"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"|"say_this"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"[^}]*?"label"\s*:\s*"Balanced"|"Balanced"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)")/i
+  )
+  if (balancedMatch) {
+    const text = balancedMatch[1] || balancedMatch[2] || balancedMatch[3]
+    if (text) options.push({ label: 'Balanced', say_this: text.replace(/\\"/g, '"').trim() })
+  }
+
+  const detailedMatch = raw.match(
+    /(?:"label"\s*:\s*"Detailed"[^}]*?"say_this"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"|"say_this"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"[^}]*?"label"\s*:\s*"Detailed"|"Detailed"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)")/i
+  )
+  if (detailedMatch) {
+    const text = detailedMatch[1] || detailedMatch[2] || detailedMatch[3]
+    if (text) options.push({ label: 'Detailed', say_this: text.replace(/\\"/g, '"').trim() })
+  }
+
+  if (options.length > 0) {
+    return {
+      question_clean: qMatch ? qMatch[1].replace(/\\"/g, '"') : '',
+      category: catMatch ? catMatch[1].replace(/\\"/g, '"') : 'Behavioral',
+      options,
+    }
+  }
+  return null
+}
+
+export function tryParseCoachJson(raw: string): CoachCardData | null {
+  if (!raw) return null
+  const cleaned = cleanJsonText(raw)
+  const firstBrace = cleaned.indexOf('{')
+  const lastBrace = cleaned.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      const jsonStr = cleaned.substring(firstBrace, lastBrace + 1)
+      const parsed = JSON.parse(jsonStr)
+      if (parsed && typeof parsed === 'object') {
+        // If options is an object like { Short: "...", Balanced: "...", Detailed: "..." }
+        if (parsed.options && !Array.isArray(parsed.options) && typeof parsed.options === 'object') {
+          parsed.options = Object.entries(parsed.options).map(([label, val]: [string, any]) => ({
+            label,
+            say_this: typeof val === 'string' ? val : (val && typeof val === 'object' && val.say_this ? String(val.say_this) : JSON.stringify(val))
+          }))
+        }
+
+        // If options is an array, normalize each item to { label, say_this }
+        if (Array.isArray(parsed.options)) {
+          parsed.options = parsed.options.map((opt: any, idx: number) => {
+            const fallbackLabels = ['Short', 'Balanced', 'Detailed']
+            if (typeof opt === 'string') {
+              return { label: fallbackLabels[idx] || `Option ${idx + 1}`, say_this: opt }
+            }
+            if (opt && typeof opt === 'object') {
+              const keys = Object.keys(opt)
+              if (opt.say_this) {
+                return {
+                  label: opt.label || fallbackLabels[idx] || `Option ${idx + 1}`,
+                  say_this: String(opt.say_this)
+                }
+              }
+              const matchedKey = keys.find((k) => ['short', 'balanced', 'detailed'].includes(k.toLowerCase()))
+              if (matchedKey) {
+                return {
+                  label: matchedKey.charAt(0).toUpperCase() + matchedKey.slice(1).toLowerCase(),
+                  say_this: String(opt[matchedKey])
+                }
+              }
+              return {
+                label: opt.label || fallbackLabels[idx] || `Option ${idx + 1}`,
+                say_this: String(Object.values(opt)[0] || '')
+              }
+            }
+            return { label: fallbackLabels[idx] || `Option ${idx + 1}`, say_this: String(opt) }
+          })
+        }
+
+        if (parsed.options || parsed.category || parsed.type || parsed.body || parsed.question_clean || parsed.reply) {
+          return parsed as CoachCardData
+        }
+      }
+    } catch {
+      // Incomplete or malformed JSON - fallback to regex recovery
+    }
+  }
+
+  // Regex recovery fallback for malformed JSON
+  return recoverMalformedCoachJson(raw)
+}
+
+function formatCardForClipboard(data: CoachCardData): string {
+  if (data.options && data.options.length > 0) {
+    const parts = [
+      `[${(data.category || 'ANSWER OPTIONS').toUpperCase()}] ${data.question_clean || ''}`,
+      ...data.options.map((opt) => `• ${opt.label.toUpperCase()}:\n"${opt.say_this}"`)
+    ]
+    return parts.join('\n\n')
+  }
+
+  if (data.type === 'small_talk') {
+    const reply = data.reply || data.body?.reply || ''
+    return `[GREETING] ${data.question_clean || ''}\nReply: ${reply}`
+  }
+
+  const parts: string[] = []
+  parts.push(`[${(data.type || 'ANSWER').toUpperCase()}] ${data.question_clean || ''}`)
+  if (data.intent) parts.push(`Intent: ${data.intent}`)
+  if (data.body) {
+    parts.push('--- TALKING POINTS ---')
+    for (const [k, v] of Object.entries(data.body)) {
+      const label = k.replace(/_/g, ' ').toUpperCase()
+      if (Array.isArray(v)) {
+        parts.push(`${label}:\n${v.map((item) => `• ${item}`).join('\n')}`)
+      } else {
+        parts.push(`${label}: ${v}`)
+      }
+    }
+  }
+  if (data.watch_outs?.length) {
+    parts.push(`WATCH OUTS:\n${data.watch_outs.map((w) => `• ${w}`).join('\n')}`)
+  }
+  if (data.ask_them) {
+    parts.push(`REVERSE QUESTION: ${data.ask_them}`)
+  }
+  return parts.join('\n\n')
+}
+
+function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp: number }) {
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+  const [copiedAll, setCopiedAll] = useState(false)
+
+  const catKey = (data.category || '').toLowerCase().trim()
+  const catColor = CATEGORY_COLORS[catKey] || {
+    badge: 'bg-accent/20 text-accent border-accent/30',
+  }
+
+  const handleCopyOption = (text: string, index: number) => {
+    navigator.clipboard.writeText(text)
+    setCopiedIndex(index)
+    setTimeout(() => setCopiedIndex(null), 1600)
+  }
+
+  const handleCopyAll = () => {
+    const textToCopy = formatCardForClipboard(data)
+    navigator.clipboard.writeText(textToCopy)
+    setCopiedAll(true)
+    setTimeout(() => setCopiedAll(false), 1600)
+  }
+
+  return (
+    <div className="suggestion-enter mb-4 px-3.5 py-3 rounded-xl bg-surface-card/95 border border-border/80 shadow-md hover:border-accent/40 transition-all space-y-3">
+      {/* Top Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-5 h-5 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center">
+            <Bot size={12} className="text-accent" />
+          </div>
+          <span className="text-[10px] font-bold tracking-wider text-accent uppercase">
+            TUDLOIKO Coach
+          </span>
+          {data.category && (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${catColor.badge}`}>
+              {data.category}
+            </span>
+          )}
+          <span className="text-[10px] text-text-muted flex items-center gap-1 font-mono">
+            <Sparkles size={10} className="text-accent/80" /> 3 Ready Options
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopyAll}
+            title="Copy all 3 answer options"
+            className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-text-primary transition-colors border border-border/30"
+          >
+            {copiedAll ? (
+              <>
+                <Check size={10} className="text-green-400" />
+                <span className="text-green-400 font-medium">Copied All</span>
+              </>
+            ) : (
+              <>
+                <Copy size={10} />
+                <span>Copy All</span>
+              </>
+            )}
+          </button>
+          <span className="text-[10px] text-text-muted">
+            {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+      </div>
+
+      {/* Cleaned Question */}
+      {data.question_clean && (
+        <div className="text-[12px] text-text-secondary font-medium pl-2.5 border-l-2 border-accent/60 py-0.5 italic">
+          "{data.question_clean}"
+        </div>
+      )}
+
+      {/* 3 Answer Options Cards */}
+      <div className="space-y-2.5 pt-0.5">
+        {data.options.map((opt, idx) => {
+          const isShort = opt.label.toLowerCase().includes('short')
+          const isBalanced = opt.label.toLowerCase().includes('balanced')
+          const isDetailed = opt.label.toLowerCase().includes('detailed')
+
+          const badgeClass = isShort
+            ? 'bg-blue-500/20 text-blue-300 border-blue-500/35'
+            : isBalanced
+            ? 'bg-purple-500/20 text-purple-300 border-purple-500/35'
+            : isDetailed
+            ? 'bg-amber-500/20 text-amber-300 border-amber-500/35'
+            : 'bg-accent/20 text-accent border-accent/30'
+
+          const lengthHint = isShort
+            ? '≤ 20 words · Quick & punchy'
+            : isBalanced
+            ? '≤ 40 words · Conversational'
+            : isDetailed
+            ? '≤ 70 words · In-depth details'
+            : ''
+
+          const wordCount = opt.say_this.trim().split(/\s+/).filter(Boolean).length
+
+          return (
+            <div
+              key={idx}
+              className="p-3 rounded-xl bg-white/[0.03] border border-border/70 hover:border-accent/40 hover:bg-white/[0.05] transition-all space-y-1.5 group/opt"
+            >
+              {/* Option Subheader */}
+              <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded-full font-bold border ${badgeClass}`}>
+                    {opt.label}
+                  </span>
+                  <span className="text-text-muted font-mono text-[9px]">{lengthHint}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-mono text-text-muted">
+                    {wordCount} words
+                  </span>
+                  <button
+                    onClick={() => handleCopyOption(opt.say_this, idx)}
+                    className="p-1 rounded hover:bg-white/10 text-text-muted hover:text-text-primary transition-colors flex items-center gap-1"
+                    title={`Copy "${opt.label}" answer`}
+                  >
+                    {copiedIndex === idx ? (
+                      <>
+                        <Check size={11} className="text-green-400" />
+                        <span className="text-[9px] text-green-400 font-medium">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={11} />
+                        <span className="text-[9px]">Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Ready-to-say Spoken Answer */}
+              <p className="text-[13px] text-text-primary font-medium leading-relaxed selection:bg-accent/30">
+                "{opt.say_this}"
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function StructuredCoachCard({ data, timestamp }: { data: CoachCardData; timestamp: number }) {
+  // If the card has the 3 answer options, render AnswerOptionsCard!
+  if (data.options && Array.isArray(data.options) && data.options.length > 0) {
+    return <AnswerOptionsCard data={data} timestamp={timestamp} />
+  }
+
+  const [copied, setCopied] = useState(false)
+  const typeKey = (data.type || '').toLowerCase()
+  const typeCfg = TYPE_CONFIG[typeKey] || {
+    label: (data.type || 'Coach Cue').replace(/_/g, ' ').toUpperCase(),
+    badge: 'bg-accent/20 text-accent border-accent/30',
+  }
+
+  const handleCopy = () => {
+    const textToCopy = formatCardForClipboard(data)
+    navigator.clipboard.writeText(textToCopy)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
+  }
+
+  // Small Talk / Greeting: Concise, one-sentence reply without heavy cards
+  if (data.type === 'small_talk') {
+    const replyText = data.reply || data.body?.reply || 'I am doing well, thank you! Excited to be here today.'
+    return (
+      <div className="suggestion-enter mb-3 px-3.5 py-2.5 rounded-xl bg-surface-card/95 border border-emerald-500/30 shadow-sm space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+              <Bot size={12} className="text-emerald-400" />
+            </div>
+            <span className="text-[10px] font-bold tracking-wider text-emerald-400 uppercase">
+              TUDLOIKO Coach
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full border font-semibold bg-emerald-500/20 text-emerald-300 border-emerald-500/35">
+              Greeting / Small Talk
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              title="Copy reply"
+              className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-text-primary transition-colors border border-border/30"
+            >
+              {copied ? (
+                <>
+                  <Check size={10} className="text-green-400" />
+                  <span className="text-green-400 font-medium">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={10} />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+            <span className="text-[10px] text-text-muted">
+              {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        </div>
+
+        {data.question_clean && (
+          <div className="text-[11px] text-text-muted italic pl-2 border-l border-emerald-500/40">
+            "{data.question_clean}"
+          </div>
+        )}
+
+        <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-text-primary text-[13px] font-medium leading-relaxed">
+          "{replyText}"
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="suggestion-enter mb-4 px-3.5 py-3 rounded-xl bg-surface-card/95 border border-border/80 shadow-md hover:border-accent/40 transition-all space-y-2.5">
+      {/* Top Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-5 h-5 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center">
+            <Bot size={12} className="text-accent" />
+          </div>
+          <span className="text-[10px] font-bold tracking-wider text-accent uppercase">
+            TUDLOIKO Coach
+          </span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${typeCfg.badge}`}>
+            {typeCfg.label}
+          </span>
+          {data.target_seconds && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 border border-border/40 text-text-muted flex items-center gap-1 font-mono">
+              <Clock size={10} className="text-accent/70" /> ~{data.target_seconds}s
+            </span>
+          )}
+          {data.depth && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-border/30 text-text-muted capitalize">
+              {data.depth}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopy}
+            title="Copy answer cues"
+            className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-text-primary transition-colors border border-border/30"
+          >
+            {copied ? (
+              <>
+                <Check size={10} className="text-green-400" />
+                <span className="text-green-400 font-medium">Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy size={10} />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+          <span className="text-[10px] text-text-muted">
+            {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+      </div>
+
+      {/* Cleaned Question */}
+      {data.question_clean && (
+        <div className="text-[12px] text-text-primary/95 font-medium pl-2.5 border-l-2 border-accent/60 py-0.5 italic">
+          "{data.question_clean}"
+        </div>
+      )}
+
+      {/* Special Banner for Inappropriate Question */}
+      {data.type === 'inappropriate' && (
+        <div className="p-2.5 rounded-lg bg-red-500/15 border border-red-500/30 flex items-start gap-2 text-red-300 text-[12px]">
+          <ShieldAlert size={15} className="text-red-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold text-red-200 block text-[11px] uppercase tracking-wider mb-0.5">
+              Inappropriate / Non-Job-Relevant Question
+            </span>
+            <span>Use the polite redirect below to pivot smoothly back to your qualifications.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Special Banner for Clarification Needed */}
+      {data.type === 'clarification_needed' && (
+        <div className="p-2.5 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-start gap-2 text-orange-300 text-[12px]">
+          <HelpCircle size={15} className="text-orange-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold text-orange-200 block text-[11px] uppercase tracking-wider mb-0.5">
+              Clarification Recommended
+            </span>
+            <span>The question was unclear or incomplete. Ask the interviewer to clarify before answering.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Evaluated Intent & Matched Story */}
+      {(data.intent || data.source?.story_title) && (
+        <div className="flex items-center gap-2 flex-wrap text-[11px] pt-0.5">
+          {data.intent && (
+            <div className="flex items-center gap-1 text-text-secondary bg-white/5 px-2 py-0.5 rounded-md border border-border/40">
+              <Target size={11} className="text-accent flex-shrink-0" />
+              <span><strong className="text-text-primary font-medium">Intent:</strong> {data.intent}</span>
+            </div>
+          )}
+          {data.source?.story_title && (
+            <div className="flex items-center gap-1 text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/25">
+              <BookMarked size={11} className="text-amber-400 flex-shrink-0" />
+              <span><strong className="font-semibold">Story:</strong> {data.source.story_title}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Answer Cues Body */}
+      {data.body && (
+        <div className="space-y-2 pt-1">
+          {Object.entries(data.body).map(([key, val]) => {
+            const formattedLabel = key.replace(/_/g, ' ').toUpperCase()
+            return (
+              <div key={key} className="flex items-start gap-2 text-[12px] leading-relaxed">
+                <span className="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded bg-accent/20 text-accent border border-accent/30 font-mono tracking-wider flex-shrink-0 mt-0.5">
+                  {formattedLabel}
+                </span>
+                <div className="flex-1 min-w-0 text-text-primary">
+                  {Array.isArray(val) ? (
+                    <ul className="space-y-1">
+                      {val.map((item, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <span className="w-1 h-1 rounded-full bg-accent mt-2 flex-shrink-0" />
+                          <span>{renderFormattedText(String(item))}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span>{renderFormattedText(String(val))}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Gap Warning */}
+      {data.gap_warning && (
+        <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-start gap-1.5 text-[11px] text-amber-300">
+          <AlertTriangle size={13} className="text-amber-400 flex-shrink-0 mt-0.5" />
+          <span><strong>Gap Warning:</strong> {data.gap_warning}</span>
+        </div>
+      )}
+
+      {/* Watch Outs */}
+      {data.watch_outs && data.watch_outs.length > 0 && (
+        <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/25 text-[11px] space-y-1">
+          <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1">
+            <ShieldAlert size={11} /> Watch Outs
+          </div>
+          <ul className="space-y-0.5 pl-3 list-disc text-red-300/90">
+            {data.watch_outs.map((w, idx) => (
+              <li key={idx}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Likely Follow-ups */}
+      {data.likely_followups && data.likely_followups.length > 0 && (
+        <div className="p-2 rounded-lg bg-white/5 border border-border/40 text-[11px] space-y-1.5">
+          <div className="text-[10px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
+            <Sparkles size={11} /> Likely Follow-ups to Expect
+          </div>
+          <div className="space-y-1">
+            {data.likely_followups.map((f, idx) => (
+              <div key={idx} className="pl-2 border-l-2 border-accent/40 text-[11px]">
+                <p className="font-medium text-text-primary">"{f.question}"</p>
+                <p className="text-[10px] text-text-muted mt-0.5">💡 Prep: {f.prep_hint}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ask Them */}
+      {data.ask_them && (
+        <div className="p-2 rounded-lg bg-gem-blue/10 border border-gem-blue/25 text-[12px] flex items-start gap-1.5 text-gem-blue">
+          <ArrowRight size={13} className="mt-0.5 flex-shrink-0" />
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold uppercase tracking-wider block text-gem-blue/80">
+              Ask Interviewer (Reverse Question)
+            </span>
+            <span className="font-medium text-text-primary text-[11px]">"{data.ask_them}"</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CoachMessageCard({ suggestion }: { suggestion: Suggestion }) {
+  // If suggestion text is valid JSON matching CoachCardData, render StructuredCoachCard
+  const structuredData = tryParseCoachJson(suggestion.text)
+  if (structuredData) {
+    return <StructuredCoachCard data={structuredData} timestamp={suggestion.timestamp} />
+  }
+
+  // If streaming JSON in progress, render a sleek streaming preview
+  const isStreamingJson =
+    suggestion.isStreaming &&
+    (suggestion.text.includes('{') ||
+      suggestion.text.includes('"question_clean"') ||
+      suggestion.text.includes('"type"') ||
+      suggestion.text.includes('"category"') ||
+      suggestion.text.includes('"options"'))
+
+  if (isStreamingJson) {
+    const interimCategory = suggestion.text.match(/"category"\s*:\s*"([^"]+)"/)?.[1]
+    const interimType = suggestion.text.match(/"type"\s*:\s*"([^"]+)"/)?.[1]
+    const interimIntent = suggestion.text.match(/"intent"\s*:\s*"([^"]+)"/)?.[1]
+    const interimCleanQ = suggestion.text.match(/"question_clean"\s*:\s*"([^"]+)"/)?.[1]
+    const catKey = (interimCategory || '').toLowerCase().trim()
+    const catColor = CATEGORY_COLORS[catKey] || {
+      badge: 'bg-accent/20 text-accent border-accent/30',
+    }
+    const typeCfg = interimType ? TYPE_CONFIG[interimType.toLowerCase()] : null
+
+    return (
+      <div className="suggestion-enter mb-4 px-3.5 py-3 rounded-xl bg-surface-card/95 border border-accent/40 shadow-md space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="w-5 h-5 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center">
+              <Bot size={12} className="text-accent animate-pulse" />
+            </div>
+            <span className="text-[10px] font-bold tracking-wider text-accent uppercase">
+              TUDLOIKO Coach
+            </span>
+            {interimCategory ? (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${catColor.badge}`}>
+                {interimCategory}
+              </span>
+            ) : typeCfg ? (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${typeCfg.badge}`}>
+                {typeCfg.label}
+              </span>
+            ) : null}
+            <span className="text-[10px] text-accent flex items-center gap-1 font-mono">
+              <Loader2 size={11} className="animate-spin text-accent" />
+              <span>Generating 3 answer options…</span>
+            </span>
+          </div>
+          <span className="text-[10px] text-text-muted">
+            {new Date(suggestion.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+
+        {interimCleanQ && (
+          <div className="text-[12px] text-text-primary font-medium pl-2.5 border-l-2 border-accent/60 italic">
+            "{interimCleanQ}"
+          </div>
+        )}
+
+        {interimIntent && (
+          <div className="flex items-center gap-1 text-[11px] text-text-secondary bg-white/5 px-2 py-1 rounded-md border border-border/40">
+            <Target size={11} className="text-accent flex-shrink-0" />
+            <span><strong className="text-text-primary font-medium">Intent:</strong> {interimIntent}</span>
+          </div>
+        )}
+
+        {/* Pulse skeleton for the 3 incoming options */}
+        <div className="space-y-2 py-0.5">
+          <div className="p-2.5 rounded-lg bg-white/[0.03] border border-border/50 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                Short
+              </span>
+              <span className="text-[9px] text-text-muted font-mono">≤ 20 words</span>
+            </div>
+            <div className="h-2.5 bg-white/10 rounded animate-pulse w-3/4" />
+          </div>
+
+          <div className="p-2.5 rounded-lg bg-white/[0.03] border border-border/50 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                Balanced
+              </span>
+              <span className="text-[9px] text-text-muted font-mono">≤ 40 words</span>
+            </div>
+            <div className="h-2.5 bg-white/10 rounded animate-pulse w-5/6" />
+          </div>
+
+          <div className="p-2.5 rounded-lg bg-white/[0.03] border border-border/50 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Detailed
+              </span>
+              <span className="text-[9px] text-text-muted font-mono">≤ 70 words</span>
+            </div>
+            <div className="h-2.5 bg-white/10 rounded animate-pulse w-2/3" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const [copied, setCopied] = useState(false)
   const lines = parseBullets(suggestion.text)
   const isAnswer = !suggestion.isStreaming && lines.length > 0
@@ -172,15 +873,18 @@ function CoachMessageCard({ suggestion }: { suggestion: Suggestion }) {
         <div className="space-y-2 text-[13px] leading-relaxed">
           {isAnswer ? (
             lines.map((line, i) => {
-              const isFollowUp = line.startsWith('→')
+              const isFollowUp = line.startsWith('→') || line.includes('→')
               if (isFollowUp) {
+                const cleanFollowUp = line.replace(/^[•\-\*]?\s*→\s*/, '')
                 return (
                   <div
                     key={i}
                     className="flex items-start gap-1.5 p-2 rounded-lg bg-gem-blue/10 border border-gem-blue/25 text-gem-blue text-[12px]"
                   >
-                    <ArrowRight size={12} className="mt-0.5 flex-shrink-0" />
-                    <span className="font-medium">{line.replace(/^→\s*/, '')}</span>
+                    <ArrowRight size={12} className="mt-0.5 flex-shrink-0 text-gem-blue" />
+                    <span className="font-medium text-gem-blue/95">
+                      {renderFormattedText(cleanFollowUp)}
+                    </span>
                   </div>
                 )
               }
@@ -300,7 +1004,7 @@ export default function SuggestionFeed({
               <Loader2 size={14} className="animate-spin flex-shrink-0" />
               <div className="min-w-0">
                 <span className="font-semibold">Transcribing question & crafting STAR talking points…</span>
-                <p className="text-[10px] text-text-muted">Analyzing audio with Gemini 3.5 Flash</p>
+                <p className="text-[10px] text-text-muted">Processing audio with Gemini…</p>
               </div>
             </div>
           )}

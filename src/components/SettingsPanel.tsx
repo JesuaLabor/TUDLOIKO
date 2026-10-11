@@ -201,6 +201,62 @@ export default function SettingsPanel({ settings, updateSettings }: SettingsPane
         </div>
       </section>
 
+      {/* ── Coach Answer Depth ────────────────────────────────────── */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-accent/70 text-[11px]">🎯</span>
+          <span className="section-label">Coaching Depth</span>
+        </div>
+        <div className="flex gap-2">
+          {(['simple', 'medium', 'technical'] as const).map((depth) => (
+            <button
+              key={depth}
+              onClick={() => updateSettings({ depthPreference: depth })}
+              className={`
+                flex-1 py-1.5 rounded-lg text-xs font-medium border capitalize transition-all duration-150
+                ${(settings.depthPreference || 'technical') === depth
+                  ? 'bg-accent/20 text-accent border-accent/30'
+                  : 'bg-white/5 text-text-muted border-border hover:text-text-secondary hover:bg-white/10'
+                }
+              `}
+            >
+              {depth}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-text-muted">
+          Adjusts whether the coach outputs simple high-level cues (HR rounds) or deeper technical nuances (tech rounds).
+        </p>
+      </section>
+
+      {/* ── Interview Language ────────────────────────────────────── */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-accent/70 text-[11px]">🗣</span>
+          <span className="section-label">Interview Language</span>
+        </div>
+        <div className="flex gap-2">
+          {(['English', 'Filipino', 'Taglish'] as const).map((lang) => (
+            <button
+              key={lang}
+              onClick={() => updateSettings({ interviewLanguage: lang })}
+              className={`
+                flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all duration-150
+                ${(settings.interviewLanguage || 'English') === lang
+                  ? 'bg-accent/20 text-accent border-accent/30'
+                  : 'bg-white/5 text-text-muted border-border hover:text-text-secondary hover:bg-white/10'
+                }
+              `}
+            >
+              {lang}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-text-muted">
+          The coach tailors all talking points and cues to your preferred interview language.
+        </p>
+      </section>
+
       {/* ── Django Backend Status ──────────────────────────────────── */}
       <section className="space-y-2 p-3 rounded-xl bg-white/5 border border-border">
         <div className="flex items-center justify-between">

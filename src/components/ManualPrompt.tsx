@@ -51,12 +51,12 @@ export default function ManualPrompt({
     const client = getGeminiClient(apiKey, context)
     await client.streamSuggestion(
       trimmed,
-      (chunk) => {
-        accumulated += chunk
-        onUpdateStreamingSuggestion(id, accumulated, false)
+      (acc) => {
+        accumulated = acc
+        onUpdateStreamingSuggestion(id, acc, false)
       },
-      (_full) => {
-        onUpdateStreamingSuggestion(id, accumulated, true)
+      (full) => {
+        onUpdateStreamingSuggestion(id, full, true)
         setIsStreaming(false)
         textareaRef.current?.focus()
       },
