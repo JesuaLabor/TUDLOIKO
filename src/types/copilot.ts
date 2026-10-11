@@ -85,6 +85,10 @@ export interface AnswerOption {
 export interface CoachCardData {
   question_clean: string
   category: string
+  difficulty?: 'standard' | 'challenging' | 'tricky'
+  main_point?: string
+  strategy_cue?: string
+  key_phrases?: string[]
   options: AnswerOption[]
   type?: QuestionType | string
   reply?: string

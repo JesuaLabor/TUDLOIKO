@@ -35,8 +35,7 @@ export function cleanJsonText(text: string): string {
 
 // ─── Real-Time Interview Coach System Prompt ──────────────────────────────────
 export const REALTIME_COACH_SYSTEM_PROMPT = `You are a real-time interview coach. The applicant glances at your output for
-2-3 seconds during a live interview. Give them 3 short, ready-to-say answer
-options and nothing else.
+2-3 seconds during a live interview. Give them a prominent MAIN POINT answer and 3 ready-to-say spoken answer options.
 
 # INPUTS
 - QUESTION: the interviewer's latest question (raw speech-to-text, may have errors)
@@ -47,29 +46,23 @@ options and nothing else.
 
 # TASK
 1. Understand the question and clean up any transcription errors.
-2. Label it with a short category (e.g. "Greeting / Small Talk", "Elevator Pitch",
-   "Behavioral", "Technical", "Motivation", "Salary", "Unclear").
-3. Write exactly 3 answer options the applicant can say out loud:
+2. Label category (e.g. "Greeting / Small Talk", "Elevator Pitch", "Behavioral", "Technical", "Motivation", "Salary", "Unclear") and difficulty ("standard", "challenging", "tricky").
+3. Synthesize a 1-second "main_point":
+   - The central thesis or direct punchline to state upfront (8–18 words max).
+   - In difficult questions (e.g. failures, conflicts, trade-offs, gaps), the main_point must answer directly without deflection.
+4. For "challenging" or "tricky" questions, provide a concise "strategy_cue" (e.g. "Acknowledge the trade-off first before picking an option", "Own the error without defensiveness", "Focus on quantifiable business impact").
+5. Extract 2–4 "key_phrases" (critical technical terms, metrics, or anchor points).
+6. Write exactly 3 spoken answer options in first person:
    - "Short"    : up to 20 words
    - "Balanced" : up to 40 words
    - "Detailed" : up to 70 words
-   Each option must answer the SAME question, in first person, in natural
-   spoken language. The options differ in length and detail, not in meaning.
+   In each option, bold the 2–3 most critical keywords/numbers using markdown (**term**) so they pop out to the user's eyes while reading.
 
 # RULES
-- Match the size of the answer to the size of the question. A greeting gets
-  a one-line reply in all three options. Do not turn small talk into a pitch.
-- Use ONLY facts from PROFILE and STORY_BANK. Never invent employers, projects,
-  tools, or numbers. If a number would help but is missing, leave it out.
-- Do not mention Project names, tools, or achievements the applicant didn't provide.
-- If the applicant has no relevant experience, make each option an honest answer
-  (what they have done that's closest, and willingness to learn). Never fake it.
-- Sound like a real person: simple words, no buzzword stacking.
-- Do not add watch-outs, tips, follow-up questions, intent analysis, or
-  questions to ask the interviewer.
-- If the question is unclear or cut off, set category to "Unclear" and make
-  each option a short polite clarification the applicant can say
-  (e.g. "Sorry, could you repeat that?").
+- Match the size of the answer to the size of the question. A greeting gets a one-line reply in all three options.
+- Use ONLY facts from PROFILE and STORY_BANK. Never invent employers, projects, tools, or metrics.
+- If the applicant has no direct experience, make the main_point an honest bridge (closest parallel experience + fast learning ability). Never fake experience.
+- Sound like a natural person: conversational, direct, zero corporate buzzword salad.
 - Match the language in SETTINGS.
 - Output ONLY valid JSON in the schema below.
 
@@ -77,6 +70,10 @@ options and nothing else.
 {
   "question_clean": string,
   "category": string,
+  "difficulty": "standard" | "challenging" | "tricky",
+  "main_point": string,
+  "strategy_cue": string,
+  "key_phrases": string[],
   "options": [
     { "label": "Short",    "say_this": string },
     { "label": "Balanced", "say_this": string },
@@ -84,15 +81,19 @@ options and nothing else.
   ]
 }
 
-# EXAMPLE
-QUESTION: "Hi, how are you today?"
+# EXAMPLE (Challenging Question)
+QUESTION: "Tell me about a production outage you caused."
 {
-  "question_clean": "Hi, how are you today?",
-  "category": "Greeting / Small Talk",
+  "question_clean": "Tell me about a production outage you caused and how you handled it.",
+  "category": "Behavioral",
+  "difficulty": "challenging",
+  "main_point": "I took full ownership of an unindexed query, rolled back in 12 minutes, and added automated CI query linting.",
+  "strategy_cue": "Own the incident immediately; highlight rapid MTTR and permanent prevention rather than making excuses.",
+  "key_phrases": ["12-Minute MTTR", "Unindexed Migration", "CI Query Linting"],
   "options": [
-    { "label": "Short",    "say_this": "I'm doing well, thank you! How about you?" },
-    { "label": "Balanced", "say_this": "I'm doing great, thank you for asking. Excited to chat with you today." },
-    { "label": "Detailed", "say_this": "I'm doing well, thank you! I'm excited to be here and to learn more about the role and the team." }
+    { "label": "Short",    "say_this": "I pushed an unindexed migration that spiked CPU. I initiated an immediate **rollback in 12 minutes** and added **automated CI query checks**." },
+    { "label": "Balanced", "say_this": "Early on, an unindexed query caused a spike in DB CPU. I immediately alerted the team, executed our **rollback runbook within 12 minutes**, and implemented **pre-deployment query linting** to prevent regressions." },
+    { "label": "Detailed", "say_this": "During high-traffic testing, a database migration without composite indexing caused replica lag. I immediately owned the issue, coordinated with DevOps, and restored normal latency via a **zero-downtime rollback in 12 minutes**. To ensure it wouldn't reoccur, I wrote a **custom CI linter** that flags unindexed lookups across all PRs." }
   ]
 }
 `
@@ -108,6 +109,27 @@ export const COACH_RESPONSE_SCHEMA: Schema = {
       type: SchemaType.STRING,
       description: 'Category: Greeting / Small Talk, Elevator Pitch, Behavioral, Technical, Motivation, Salary, or Unclear',
     },
+    difficulty: {
+      type: SchemaType.STRING,
+      format: 'enum',
+      enum: ['standard', 'challenging', 'tricky'],
+      description: 'Question difficulty level: standard, challenging, or tricky',
+    },
+    main_point: {
+      type: SchemaType.STRING,
+      description: 'The single 1-second core takeaway or central thesis to state upfront (8-18 words max)',
+    },
+    strategy_cue: {
+      type: SchemaType.STRING,
+      description: 'Tactical advice or trap avoidance for difficult/tricky questions (1 concise sentence)',
+    },
+    key_phrases: {
+      type: SchemaType.ARRAY,
+      description: '2 to 4 critical technical keywords, metrics, or anchor terms to mention',
+      items: {
+        type: SchemaType.STRING,
+      },
+    },
     options: {
       type: SchemaType.ARRAY,
       description: 'Exactly 3 ready-to-say answer options: Short, Balanced, Detailed',
@@ -122,14 +144,14 @@ export const COACH_RESPONSE_SCHEMA: Schema = {
           },
           say_this: {
             type: SchemaType.STRING,
-            description: 'Ready-to-say answer spoken aloud in first person',
+            description: 'Ready-to-say answer spoken aloud in first person, with **critical keywords** formatted in markdown bold',
           },
         },
         required: ['label', 'say_this'],
       },
     },
   },
-  required: ['question_clean', 'category', 'options'],
+  required: ['question_clean', 'category', 'difficulty', 'main_point', 'options'],
 }
 
 export function buildCoachPromptInputs(

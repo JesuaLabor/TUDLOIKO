@@ -19,6 +19,7 @@ import {
   Target,
   AlertTriangle,
   ShieldAlert,
+  Zap,
 } from 'lucide-react'
 
 interface SuggestionFeedProps {
@@ -49,6 +50,26 @@ function renderFormattedText(text: string) {
         <strong key={index} className="font-semibold text-white/95">
           {boldText}
         </strong>
+      )
+    }
+    return <span key={index}>{part}</span>
+  })
+}
+
+// Render answer text with high-contrast glowing highlighted markdown bold (**phrase**)
+export function renderHighlightedSayThis(text?: string) {
+  if (!text) return null
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      const boldText = part.slice(2, -2)
+      return (
+        <span
+          key={index}
+          className="inline-block px-1.5 py-0.5 mx-0.5 rounded font-bold text-white bg-accent/25 border border-accent/40 shadow-xs shadow-accent/20 tracking-tight"
+        >
+          {boldText}
+        </span>
       )
     }
     return <span key={index}>{part}</span>
@@ -141,6 +162,9 @@ export function recoverMalformedCoachJson(raw: string): CoachCardData | null {
   if (!raw) return null
   const qMatch = raw.match(/"question_clean"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
   const catMatch = raw.match(/"category"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+  const diffMatch = raw.match(/"difficulty"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+  const mainPointMatch = raw.match(/"main_point"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+  const stratMatch = raw.match(/"strategy_cue"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
 
   const options: { label: string; say_this: string }[] = []
 
@@ -168,10 +192,23 @@ export function recoverMalformedCoachJson(raw: string): CoachCardData | null {
     if (text) options.push({ label: 'Detailed', say_this: text.replace(/\\"/g, '"').trim() })
   }
 
-  if (options.length > 0) {
+  const keyPhrasesMatch = raw.match(/"key_phrases"\s*:\s*\[([^\]]*)\]/i)
+  const key_phrases: string[] = []
+  if (keyPhrasesMatch) {
+    const rawItems = keyPhrasesMatch[1].match(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)
+    if (rawItems) {
+      rawItems.forEach((item) => key_phrases.push(item.replace(/^"|"$/g, '').replace(/\\"/g, '"')))
+    }
+  }
+
+  if (options.length > 0 || mainPointMatch) {
     return {
       question_clean: qMatch ? qMatch[1].replace(/\\"/g, '"') : '',
       category: catMatch ? catMatch[1].replace(/\\"/g, '"') : 'Behavioral',
+      difficulty: diffMatch ? (diffMatch[1].toLowerCase() as any) : undefined,
+      main_point: mainPointMatch ? mainPointMatch[1].replace(/\\"/g, '"') : undefined,
+      strategy_cue: stratMatch ? stratMatch[1].replace(/\\"/g, '"') : undefined,
+      key_phrases: key_phrases.length > 0 ? key_phrases : undefined,
       options,
     }
   }
@@ -241,11 +278,24 @@ export function tryParseCoachJson(raw: string): CoachCardData | null {
 }
 
 function formatCardForClipboard(data: CoachCardData): string {
+  const parts: string[] = []
+  if (data.question_clean) {
+    parts.push(`[QUESTION] ${data.question_clean}`)
+  }
+  if (data.main_point) {
+    parts.push(`[⚡ CORE MAIN POINT]\n"${data.main_point.replace(/\*\*/g, '')}"`)
+  }
+  if (data.strategy_cue) {
+    parts.push(`[TACTICAL STRATEGY]\n${data.strategy_cue}`)
+  }
+  if (data.key_phrases && data.key_phrases.length > 0) {
+    parts.push(`[KEY ANCHORS]\n${data.key_phrases.join(', ')}`)
+  }
   if (data.options && data.options.length > 0) {
-    const parts = [
-      `[${(data.category || 'ANSWER OPTIONS').toUpperCase()}] ${data.question_clean || ''}`,
-      ...data.options.map((opt) => `• ${opt.label.toUpperCase()}:\n"${opt.say_this}"`)
-    ]
+    parts.push(
+      '--- READY-TO-SAY ANSWERS ---',
+      ...data.options.map((opt) => `• ${opt.label.toUpperCase()}:\n"${opt.say_this.replace(/\*\*/g, '')}"`)
+    )
     return parts.join('\n\n')
   }
 
@@ -254,7 +304,6 @@ function formatCardForClipboard(data: CoachCardData): string {
     return `[GREETING] ${data.question_clean || ''}\nReply: ${reply}`
   }
 
-  const parts: string[] = []
   parts.push(`[${(data.type || 'ANSWER').toUpperCase()}] ${data.question_clean || ''}`)
   if (data.intent) parts.push(`Intent: ${data.intent}`)
   if (data.body) {
@@ -286,8 +335,11 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
     badge: 'bg-accent/20 text-accent border-accent/30',
   }
 
+  const isTricky = data.difficulty === 'tricky'
+  const isChallenging = data.difficulty === 'challenging'
+
   const handleCopyOption = (text: string, index: number) => {
-    navigator.clipboard.writeText(text)
+    navigator.clipboard.writeText(text.replace(/\*\*/g, ''))
     setCopiedIndex(index)
     setTimeout(() => setCopiedIndex(null), 1600)
   }
@@ -300,7 +352,13 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
   }
 
   return (
-    <div className="suggestion-enter mb-4 px-3.5 py-3 rounded-xl bg-surface-card/95 border border-border/80 shadow-md hover:border-accent/40 transition-all space-y-3">
+    <div className={`suggestion-enter mb-4 px-3.5 py-3 rounded-xl bg-surface-card/95 border shadow-md transition-all space-y-3 ${
+      isTricky
+        ? 'border-amber-500/40 hover:border-amber-500/60 shadow-amber-500/5'
+        : isChallenging
+        ? 'border-purple-500/40 hover:border-purple-500/60 shadow-purple-500/5'
+        : 'border-border/80 hover:border-accent/40'
+    }`}>
       {/* Top Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 flex-wrap">
@@ -315,6 +373,16 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
               {data.category}
             </span>
           )}
+          {data.difficulty && data.difficulty !== 'standard' && (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold flex items-center gap-1 ${
+              isTricky
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+            }`}>
+              <AlertTriangle size={10} className={isTricky ? 'text-amber-400' : 'text-purple-300'} />
+              {isTricky ? 'Tricky Question' : 'Challenging Question'}
+            </span>
+          )}
           <span className="text-[10px] text-text-muted flex items-center gap-1 font-mono">
             <Sparkles size={10} className="text-accent/80" /> 3 Ready Options
           </span>
@@ -323,7 +391,7 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
         <div className="flex items-center gap-2">
           <button
             onClick={handleCopyAll}
-            title="Copy all 3 answer options"
+            title="Copy all 3 answer options and main point"
             className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-text-muted hover:text-text-primary transition-colors border border-border/30"
           >
             {copiedAll ? (
@@ -348,6 +416,79 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
       {data.question_clean && (
         <div className="text-[12px] text-text-secondary font-medium pl-2.5 border-l-2 border-accent/60 py-0.5 italic">
           "{data.question_clean}"
+        </div>
+      )}
+
+      {/* ── Core Main Point Hero Callout ─────────────────────────── */}
+      {data.main_point && (
+        <div className={`p-3 rounded-xl border transition-all ${
+          isTricky
+            ? 'bg-gradient-to-br from-amber-500/15 via-amber-950/20 to-black/30 border-amber-500/40 shadow-sm shadow-amber-500/10'
+            : isChallenging
+            ? 'bg-gradient-to-br from-purple-500/15 via-blue-950/20 to-black/30 border-purple-500/40 shadow-sm shadow-purple-500/10'
+            : 'bg-gradient-to-br from-emerald-500/12 via-slate-900/40 to-black/30 border-emerald-500/35'
+        }`}>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <Zap size={13} className={isTricky ? 'text-amber-400' : isChallenging ? 'text-purple-400' : 'text-emerald-400'} />
+              <span className={`text-[10px] font-extrabold tracking-wider uppercase ${
+                isTricky ? 'text-amber-300' : isChallenging ? 'text-purple-300' : 'text-emerald-300'
+              }`}>
+                Core Main Point
+              </span>
+              <span className="text-[9px] text-text-muted font-mono">
+                1-Sec Glance
+              </span>
+            </div>
+            <button
+              onClick={() => handleCopyOption(data.main_point!, 99)}
+              className="text-[10px] text-text-muted hover:text-text-primary px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors flex items-center gap-1"
+              title="Copy core main point"
+            >
+              {copiedIndex === 99 ? (
+                <>
+                  <Check size={10} className="text-green-400" />
+                  <span className="text-green-400 font-medium">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={10} />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Main Point Text with Glowing Highlights */}
+          <p className="text-[13px] font-semibold text-white/95 leading-relaxed">
+            {renderHighlightedSayThis(data.main_point)}
+          </p>
+
+          {/* Strategy Cue for Difficult / Tricky Questions */}
+          {data.strategy_cue && (
+            <div className="mt-2 pt-2 border-t border-white/10 flex items-start gap-1.5 text-[11px] text-amber-200/90 font-medium">
+              <ShieldAlert size={12} className="text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-amber-300 uppercase tracking-wider text-[9px] mr-1 font-bold">Strategy:</strong>
+                {data.strategy_cue}
+              </span>
+            </div>
+          )}
+
+          {/* Key Anchor Phrases */}
+          {data.key_phrases && data.key_phrases.length > 0 && (
+            <div className="mt-2 pt-1 flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] text-text-muted font-mono uppercase tracking-wide">Key Anchors:</span>
+              {data.key_phrases.map((phrase, pIdx) => (
+                <span
+                  key={pIdx}
+                  className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-white/10 text-white/95 border border-white/15 font-mono shadow-xs"
+                >
+                  {phrase}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -413,9 +554,9 @@ function AnswerOptionsCard({ data, timestamp }: { data: CoachCardData; timestamp
                 </div>
               </div>
 
-              {/* Ready-to-say Spoken Answer */}
+              {/* Ready-to-say Spoken Answer with luminous bold keyword highlights */}
               <p className="text-[13px] text-text-primary font-medium leading-relaxed selection:bg-accent/30">
-                "{opt.say_this}"
+                "{renderHighlightedSayThis(opt.say_this)}"
               </p>
             </div>
           )
