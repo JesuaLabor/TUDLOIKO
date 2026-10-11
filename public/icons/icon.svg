@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0c1e" />
+      <stop offset="50%" stop-color="#070814" />
+      <stop offset="100%" stop-color="#12163b" />
+    </linearGradient>
+
+    <!-- Star Luminous Gradient -->
+    <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="45%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+
+    <!-- Accent Glow Gradient -->
+    <radialGradient id="radialGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.35" />
+      <stop offset="60%" stop-color="#7c6bff" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#070814" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Border Gradient -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#7c6bff" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#c084fc" stop-opacity="0.5" />
+    </linearGradient>
+
+    <!-- Soft Filter Glow -->
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base with Rounded Corners -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bgGrad)" />
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="url(#borderGrad)" stroke-width="4" />
+
+  <!-- Ambient Glow Core -->
+  <circle cx="256" cy="256" r="190" fill="url(#radialGlow)" />
+
+  <!-- Soundwave / Speech Acoustic Concentric Arcs -->
+  <g stroke="url(#starGrad)" stroke-width="3" fill="none" opacity="0.4" stroke-linecap="round">
+    <!-- Left Arcs -->
+    <path d="M 120 226 A 40 40 0 0 0 120 286" />
+    <path d="M 96 206 A 65 65 0 0 0 96 306" opacity="0.25" stroke-width="2.5" />
+    <!-- Right Arcs -->
+    <path d="M 392 226 A 40 40 0 0 1 392 286" />
+    <path d="M 416 206 A 65 65 0 0 1 416 306" opacity="0.25" stroke-width="2.5" />
+  </g>
+
+  <!-- Outer Orbit Ring -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="url(#borderGrad)" stroke-width="2" stroke-dasharray="8 12" opacity="0.45" />
+
+  <!-- Orbit Nodes -->
+  <circle cx="369" cy="143" r="5" fill="#38bdf8" />
+  <circle cx="143" cy="369" r="4.5" fill="#c084fc" />
+  <circle cx="256" cy="96" r="3.5" fill="#818cf8" opacity="0.8" />
+
+  <!-- Main Hero 4-Point AI Sparkle Star -->
+  <path
+    d="M 256 104 C 256 206, 216 246, 114 256 C 216 266, 256 306, 256 408 C 256 306, 296 266, 398 256 C 296 246, 256 206, 256 104 Z"
+    fill="url(#starGrad)"
+    filter="url(#softGlow)"
+  />
+
+  <!-- Secondary Inner Diamond Sparkle (Rotated Accent) -->
+  <path
+    d="M 256 196 C 256 238, 238 250, 202 256 C 238 262, 256 274, 256 316 C 256 274, 274 262, 310 256 C 274 250, 256 238, 256 196 Z"
+    fill="#ffffff"
+    opacity="0.9"
+  />
+
+  <!-- Center Luminous Core Spark -->
+  <circle cx="256" cy="256" r="12" fill="#ffffff" />
+  <circle cx="256" cy="256" r="22" fill="#38bdf8" opacity="0.5" />
+
+  <!-- Companion Mini Star (Top Right) -->
+  <path
+    d="M 370 125 C 370 148, 360 158, 338 160 C 360 162, 370 172, 370 195 C 370 172, 380 162, 402 160 C 380 158, 370 148, 370 125 Z"
+    fill="#38bdf8"
+    opacity="0.85"
+  />
+
+  <!-- Companion Mini Star (Bottom Left) -->
+  <path
+    d="M 142 335 C 142 352, 134 360, 118 362 C 134 364, 142 372, 142 389 C 142 372, 150 364, 166 362 C 150 360, 142 352, 142 335 Z"
+    fill="#c084fc"
+    opacity="0.8"
+  />
+</svg>

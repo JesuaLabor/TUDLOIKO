@@ -1,0 +1,56 @@
+{
+  "id": "com.jesua.tudloiko",
+  "name": "TUDLOIKO — AI Interview Copilot",
+  "short_name": "TUDLOIKO",
+  "description": "Real-time AI Interview Copilot & Speech Coach powered by Google Gemini",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#070814",
+  "theme_color": "#070814",
+  "orientation": "any",
+  "categories": ["productivity", "education", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Interview Coach",
+      "short_name": "Coach",
+      "description": "Start live interview coaching session",
+      "url": "/?tab=chat",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Story Bank",
+      "short_name": "Stories",
+      "description": "Access your STAR behavioral story bank",
+      "url": "/?tab=stories",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

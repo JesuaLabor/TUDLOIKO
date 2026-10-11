@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Sparkles, LayoutDashboard, Smartphone, KeyRound } from 'lucide-react'
 import OverlayWidget from './components/OverlayWidget'
+import { PwaInstallButton, IosInstallModal } from './components/PwaInstallPrompt'
 import { useLocalStorage } from './hooks/useStorage'
 import type { GeminiContext } from './lib/gemini'
 import { getGeminiClient, matchStoryWithGemini, cleanJsonText } from './lib/gemini'
@@ -67,6 +68,7 @@ export default function App() {
   // ── Core Copilot State ──────────────────────────────────────────────────────
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [showIosGuide, setShowIosGuide] = useState(false)
   const [settings, setSettings] = useLocalStorage<AppSettings>('tudloiko-settings', DEFAULT_SETTINGS)
   const [context, setContext] = useLocalStorage<GeminiContext>('tudloiko-context', {})
 
@@ -657,6 +659,9 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* PWA Install Button */}
+          <PwaInstallButton onOpenIosGuide={() => setShowIosGuide(true)} />
+
           {/* Gemini API Key status chip */}
           <button
             onClick={() => setActiveTab('settings')}
@@ -711,6 +716,9 @@ export default function App() {
       >
         {widget}
       </main>
+
+      {/* iOS Safari PWA Install Modal instructions */}
+      <IosInstallModal isOpen={showIosGuide} onClose={() => setShowIosGuide(false)} />
     </div>
   )
 }
