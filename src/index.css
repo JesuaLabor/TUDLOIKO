@@ -17,6 +17,11 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body:not(.is-electron) {
+  background: #080914;
+  color: #f1f3f9;
+}
+
 /* ─── Scrollbar styling ─────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 4px;

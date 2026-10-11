@@ -18,12 +18,22 @@ export interface CandidateContextPayload {
   resume?: string
 }
 
-const BACKEND_BASE_URL = 'http://127.0.0.1:8000/api'
+const BACKEND_BASE_URL =
+  (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_BACKEND_URL as string)) ||
+  'http://127.0.0.1:8000/api'
 
 export class BackendClient {
   /** Check if local Django backend server is online */
   static async checkHealth(): Promise<BackendHealth> {
     try {
+      // Prevent mixed-content browser console errors if running on HTTPS and backend is local HTTP
+      if (
+        typeof window !== 'undefined' &&
+        window.location.protocol === 'https:' &&
+        BACKEND_BASE_URL.startsWith('http://')
+      ) {
+        return { status: 'offline' }
+      }
       const res = await fetch(`${BACKEND_BASE_URL}/health/`, { signal: AbortSignal.timeout(2000) })
       if (res.ok) {
         const data = await res.json()
