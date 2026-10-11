@@ -15,59 +15,36 @@ export interface STTResult {
   raw: string
 }
 
-// ─── System prompt for combined STT + suggestion ──────────────────────────────
-function buildAudioPrompt(contextSummary: string, previousTranscript: string): string {
+// ─── System prompt for fast verbatim audio transcription ───────────────────────
+function buildAudioPrompt(contextSummary: string, _previousTranscript: string): string {
   const parts = [
-    `You are TUDLOIKO, a real-time AI interview copilot. You are being fed a short audio clip from a live job interview.
+    `You are a fast, highly accurate speech-to-text transcription engine for an online job interview.
+Transcribe the interviewer's spoken words verbatim from the audio chunk.
+If the audio contains silence, ambient background noise only, or unintelligible audio, respond with "(no speech)".
+Do NOT answer the question. Do NOT give advice, bullet points, or suggestions. Return ONLY the verbatim speech.
 
-Your task is to do TWO things and return them in this EXACT format:
-
-TRANSCRIPT: [the verbatim spoken words in this audio clip, or "(no speech)" if silent/unclear]
-SUGGESTIONS:
-• [first suggestion]
-• [second suggestion]
-• [third suggestion, if needed]
-
-RULES for SUGGESTIONS:
-- 2–3 bullet points max, each under 15 words
-- Be ultra-brief — the applicant is mid-conversation
-- Base suggestions on what was JUST said in the audio + previous conversation context
-- Never repeat suggestions already given
-- If the audio contains a question, give answer talking points
-- Prefix follow-up questions to ask the interviewer with →
-- If audio has no clear question (e.g. small talk), give brief engagement tips`,
+TRANSCRIPT: [verbatim speech]`,
   ]
 
   if (contextSummary) {
-    parts.push(`\nCANDIDATE CONTEXT:\n${contextSummary.slice(0, 600)}`)
-  }
-  if (previousTranscript) {
-    parts.push(`\nRECENT CONVERSATION:\n${previousTranscript.slice(-800)}`)
+    parts.push(`\nCONTEXT TERMS (for technical vocabulary recognition):\n${contextSummary.slice(0, 500)}`)
   }
 
   return parts.join('\n')
 }
 
-// ─── Parse TRANSCRIPT: / SUGGESTIONS: sections from Gemini response ───────────
+// ─── Parse TRANSCRIPT: from Gemini STT response ───────────────────────────────
 function parseSTTResponse(raw: string): STTResult {
-  // Match transcript section up to any variation of SUGGESTION header or end of output
-  const transcriptMatch = raw.match(/TRANSCRIPT:\s*([\s\S]+?)(?=\n*[\*\s]*SUGGESTION|$)/i)
-  const suggestionsMatch = raw.match(/SUGGESTIONS?[:\*\s]*\n*([\s\S]+)/i)
+  const transcriptMatch = raw.match(/TRANSCRIPT:\s*([\s\S]+)/i)
+  let transcript = transcriptMatch?.[1]?.trim() ?? raw.trim()
 
-  let transcript = transcriptMatch?.[1]?.trim() ?? raw.slice(0, 200).trim()
-  // Clean any trailing headers, markdown, or truncated suggestion tokens (e.g. '. SUG', 'SUGGESTIONS:')
   transcript = transcript
-    .replace(/[\*\s]*SUGG?E?S?T?I?O?N?S?[:\s\*]*$/i, '')
+    .replace(/^TRANSCRIPT:\s*/i, '')
     .trim()
-
-  let suggestions = suggestionsMatch?.[1]?.trim() ?? ''
-  if (!transcriptMatch && suggestions) {
-    transcript = raw.replace(/SUGGESTIONS?[\s\S]*/i, '').replace(/TRANSCRIPT:\s*/i, '').trim()
-  }
 
   return {
     transcript,
-    suggestions,
+    suggestions: '',
     raw,
   }
 }
@@ -124,9 +101,11 @@ export class GeminiAudioProcessor {
       // Clean mimeType to canonical standard format without codecs parameters
       const cleanMime = (mimeType.split(';')[0].trim() || 'audio/webm') as 'audio/webm' | 'audio/ogg' | 'audio/wav'
 
-      // Prioritize gemini-3.5-flash-lite for higher free-tier quota & ultra-low latency
+      // Prioritize gemini-3.5-flash-lite and flash-lite family for high free-tier quota & ultra-low latency
       const candidateModels = [
         'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-lite-latest',
         'gemini-3.5-flash',
       ]
       let lastErr: unknown = null
@@ -136,8 +115,8 @@ export class GeminiAudioProcessor {
           const model = this.genAI.getGenerativeModel({
             model: modelName,
             generationConfig: {
-              temperature: 0.4,
-              maxOutputTokens: 400,
+              temperature: 0.5,
+              maxOutputTokens: 800,
             },
           })
 
@@ -189,7 +168,7 @@ export function buildContextSummary(ctx: {
   const parts: string[] = []
   if (ctx.position) parts.push(`Role: ${ctx.position}`)
   if (ctx.companyInfo) parts.push(`Company: ${ctx.companyInfo}`)
-  if (ctx.jobDescription) parts.push(`JD: ${ctx.jobDescription.slice(0, 300)}`)
-  if (ctx.resume) parts.push(`Resume: ${ctx.resume.slice(0, 300)}`)
+  if (ctx.jobDescription) parts.push(`JD: ${ctx.jobDescription.slice(0, 500)}`)
+  if (ctx.resume) parts.push(`Resume Profile:\n${ctx.resume.slice(0, 1500)}`)
   return parts.join('\n')
 }

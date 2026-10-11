@@ -104,21 +104,7 @@ export class AudioCaptureManager {
         : 'audio/ogg'
       this.currentMimeType = mimeType
 
-      this.recorder = new MediaRecorder(this.stream, { mimeType })
-
-      this.recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 200) {
-          // Accumulate raw audio slice into buffer
-          this.chunksBuffer.push(e.data)
-        }
-      }
-
-      this.recorder.onerror = (e) => {
-        this.onErrorCb?.(new Error(`MediaRecorder error: ${e.type}`))
-      }
-
-      // Collect slice every 800ms
-      this.recorder.start(800)
+      this.initRecorder()
       this.isCapturing = true
 
       // ── VAD polling ──────────────────────────────────────────────────────────
@@ -148,21 +134,21 @@ export class AudioCaptureManager {
             this.silenceTimer = null
           }
 
-          // In 'auto' mode only: flush if single utterance exceeds max length
+          // In 'auto' mode only: cycle if single utterance exceeds max length
           if (this.captureMode === 'auto') {
             if (!this.maxTimer) {
               this.maxTimer = setTimeout(() => {
-                this.flushUtterance()
+                this.cycleUtterance()
               }, maxUtteranceMs)
             }
           }
         } else {
           // Silence detected
-          // In 'auto' mode only: automatically flush utterance on pause
+          // In 'auto' mode only: automatically cycle utterance on pause
           if (this.captureMode === 'auto' && !this.isSilent && this.hasSpokenInCurrentUtterance) {
             this.isSilent = true
             this.silenceTimer = setTimeout(() => {
-              this.flushUtterance()
+              this.cycleUtterance()
               this.onSilenceCb?.()
             }, silenceDurationMs)
           }
@@ -173,22 +159,62 @@ export class AudioCaptureManager {
     }
   }
 
-  // ── Combine and emit accumulated utterance ──────────────────────────────────
-  private flushUtterance(): void {
+  // ── Helper: Initialize a clean MediaRecorder instance ──────────────────────
+  private initRecorder(): void {
+    if (!this.stream) return
+
+    this.recorder = new MediaRecorder(this.stream, { mimeType: this.currentMimeType })
+
+    this.recorder.ondataavailable = (e) => {
+      // NEVER drop chunks: the first chunk contains the essential EBML container header!
+      if (e.data && e.data.size > 0) {
+        this.chunksBuffer.push(e.data)
+      }
+    }
+
+    this.recorder.onerror = (e) => {
+      this.onErrorCb?.(new Error(`MediaRecorder error: ${e.type}`))
+    }
+
+    // Start without timeslice to record continuous, non-fragmented WebM
+    this.recorder.start()
+  }
+
+  // ── Cycle utterance for Auto mode (ensures each question has its own EBML header) ─
+  private async cycleUtterance(): Promise<void> {
     if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null }
     if (this.maxTimer) { clearTimeout(this.maxTimer); this.maxTimer = null }
+    if (!this.hasSpokenInCurrentUtterance || !this.recorder) return
 
-    if (this.hasSpokenInCurrentUtterance && this.chunksBuffer.length > 0) {
+    const recorder = this.recorder
+    this.hasSpokenInCurrentUtterance = false
+    this.isSilent = true
+
+    if (recorder.state !== 'inactive') {
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve()
+        try {
+          recorder.stop()
+        } catch {
+          resolve()
+        }
+      })
+      recorder.ondataavailable = null
+      recorder.onstop = null
+    }
+
+    if (this.chunksBuffer.length > 0) {
       const combinedBlob = new Blob(this.chunksBuffer, { type: this.currentMimeType })
-      if (combinedBlob.size > 1000 && this.onChunkCb) {
+      this.chunksBuffer = []
+      if (combinedBlob.size >= 800 && this.onChunkCb) {
         this.onChunkCb(combinedBlob, this.currentMimeType)
       }
     }
 
-    // Reset buffer for next question/utterance
-    this.chunksBuffer = []
-    this.hasSpokenInCurrentUtterance = false
-    this.isSilent = true
+    // If still capturing in auto mode, start a fresh recorder for the next question
+    if (this.isCapturing && this.captureMode === 'auto' && this.stream && this.stream.active) {
+      this.initRecorder()
+    }
   }
 
   // ── Stop capture ────────────────────────────────────────────────────────────
@@ -201,7 +227,7 @@ export class AudioCaptureManager {
     this.recorder = null
     this.isCapturing = false
 
-    // Properly await the recorder's onstop event to ensure all trailing data chunks are flushed
+    // Properly await recorder's onstop event to ensure the complete WebM file is flushed
     if (recorder && recorder.state !== 'inactive') {
       await new Promise<void>((resolve) => {
         recorder.onstop = () => resolve()
@@ -232,7 +258,7 @@ export class AudioCaptureManager {
       this.hasSpokenInCurrentUtterance = false
       this.isSilent = true
 
-      // Only dispatch if the recorded audio has valid content
+      // Only dispatch if recorded audio has valid content
       if (combinedBlob.size >= 800 && this.onChunkCb) {
         this.onChunkCb(combinedBlob, this.currentMimeType)
       }

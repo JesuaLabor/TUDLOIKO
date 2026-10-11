@@ -57,3 +57,48 @@ export interface SpeechAnalyticsResult {
   paceStatus: 'slow' | 'optimal' | 'fast'
   totalWords: number
 }
+
+export type QuestionType =
+  | 'small_talk'
+  | 'behavioral'
+  | 'technical_concept'
+  | 'technical_problem'
+  | 'situational'
+  | 'motivational'
+  | 'self_intro'
+  | 'strengths_weaknesses'
+  | 'salary_logistics'
+  | 'no_experience'
+  | 'clarification_needed'
+  | 'inappropriate'
+
+export interface LikelyFollowup {
+  question: string
+  prep_hint: string
+}
+
+export interface AnswerOption {
+  label: 'Short' | 'Balanced' | 'Detailed' | string
+  say_this: string
+}
+
+export interface CoachCardData {
+  question_clean: string
+  category: string
+  options: AnswerOption[]
+  type?: QuestionType | string
+  reply?: string
+  intent?: string
+  depth?: 'simple' | 'medium' | 'technical'
+  target_seconds?: number
+  source?: {
+    story_id: string | null
+    story_title: string | null
+    confidence: 'high' | 'medium' | 'low'
+  }
+  body?: Record<string, any>
+  watch_outs?: string[]
+  likely_followups?: LikelyFollowup[]
+  gap_warning?: string | null
+  ask_them?: string | null
+}

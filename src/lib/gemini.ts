@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, SchemaType, type Schema } from '@google/generative-ai'
 import type { StoryBankItem, PredictedQuestion, InterviewDebrief } from '../types/copilot'
 
 export interface GeminiConfig {
@@ -12,10 +12,20 @@ export interface GeminiContext {
   companyInfo?: string
   jobDescription?: string
   resume?: string
+  resumeFileName?: string
+  resumeFileSize?: number
+  resumePdfBase64?: string
   stories?: StoryBankItem[]
+  depthPreference?: 'simple' | 'medium' | 'technical'
+  interviewLanguage?: 'English' | 'Filipino' | 'Taglish'
 }
 
-function cleanJsonText(text: string): string {
+export interface InterviewTurnHistory {
+  question: string
+  storyId?: string | null
+}
+
+export function cleanJsonText(text: string): string {
   let cleaned = text.trim()
   if (cleaned.startsWith('```')) {
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '')
@@ -23,33 +33,135 @@ function cleanJsonText(text: string): string {
   return cleaned.trim()
 }
 
-// ─── System prompt builder ───────────────────────────────────────────────────
-function buildSystemPrompt(context: GeminiContext): string {
-  const parts: string[] = [
-    `You are TUDLOIKO, an AI Interview Copilot assisting a job applicant in real time during a live video interview.`,
-    `Your goal: Provide hyper-concise, glanceable, high-impact talking points and answer hints. The user must be able to read and process your advice in under 2 seconds mid-conversation.`,
-    `RULES:`,
-    `- Keep response under 4 bullet points max`,
-    `- Each bullet must be 8-18 words max`,
-    `- Use bold text (**keyword**) for critical key phrases to make them glanceable`,
-    `- Format actionable advice, STAR method framing (Situation/Task/Action/Result), or concrete metrics`,
-    `- Suggest follow-up questions to ask the interviewer when appropriate (prefix with "→ Ask:")`,
-    `- NEVER write full paragraphs or long essays`,
+// ─── Real-Time Interview Coach System Prompt ──────────────────────────────────
+export const REALTIME_COACH_SYSTEM_PROMPT = `You are a real-time interview coach. The applicant glances at your output for
+2-3 seconds during a live interview. Give them 3 short, ready-to-say answer
+options and nothing else.
+
+# INPUTS
+- QUESTION: the interviewer's latest question (raw speech-to-text, may have errors)
+- PROFILE: the applicant's resume summary and skills
+- STORY_BANK: the applicant's real projects and examples
+- JOB: the job posting (title, requirements)
+- SETTINGS: language (English | Filipino | Taglish)
+
+# TASK
+1. Understand the question and clean up any transcription errors.
+2. Label it with a short category (e.g. "Greeting / Small Talk", "Elevator Pitch",
+   "Behavioral", "Technical", "Motivation", "Salary", "Unclear").
+3. Write exactly 3 answer options the applicant can say out loud:
+   - "Short"    : up to 20 words
+   - "Balanced" : up to 40 words
+   - "Detailed" : up to 70 words
+   Each option must answer the SAME question, in first person, in natural
+   spoken language. The options differ in length and detail, not in meaning.
+
+# RULES
+- Match the size of the answer to the size of the question. A greeting gets
+  a one-line reply in all three options. Do not turn small talk into a pitch.
+- Use ONLY facts from PROFILE and STORY_BANK. Never invent employers, projects,
+  tools, or numbers. If a number would help but is missing, leave it out.
+- Do not mention Project names, tools, or achievements the applicant didn't provide.
+- If the applicant has no relevant experience, make each option an honest answer
+  (what they have done that's closest, and willingness to learn). Never fake it.
+- Sound like a real person: simple words, no buzzword stacking.
+- Do not add watch-outs, tips, follow-up questions, intent analysis, or
+  questions to ask the interviewer.
+- If the question is unclear or cut off, set category to "Unclear" and make
+  each option a short polite clarification the applicant can say
+  (e.g. "Sorry, could you repeat that?").
+- Match the language in SETTINGS.
+- Output ONLY valid JSON in the schema below.
+
+# OUTPUT SCHEMA
+{
+  "question_clean": string,
+  "category": string,
+  "options": [
+    { "label": "Short",    "say_this": string },
+    { "label": "Balanced", "say_this": string },
+    { "label": "Detailed", "say_this": string }
   ]
+}
 
-  if (context.position) parts.push(`Target Role: ${context.position}`)
-  if (context.companyInfo) parts.push(`Company Info: ${context.companyInfo}`)
-  if (context.jobDescription) parts.push(`Job Description:\n${context.jobDescription}`)
-  if (context.resume) parts.push(`Candidate Resume/CV:\n${context.resume}`)
-  if (context.stories && context.stories.length > 0) {
-    const storiesSummary = context.stories
-      .map((s) => `• "${s.title}": S(${s.situation}) A(${s.action}) R(${s.result}) [${s.tags.join(', ')}]`)
-      .slice(0, 4)
-      .join('\n')
-    parts.push(`Candidate's Personal Story Bank (reference these examples if relevant):\n${storiesSummary}`)
-  }
+# EXAMPLE
+QUESTION: "Hi, how are you today?"
+{
+  "question_clean": "Hi, how are you today?",
+  "category": "Greeting / Small Talk",
+  "options": [
+    { "label": "Short",    "say_this": "I'm doing well, thank you! How about you?" },
+    { "label": "Balanced", "say_this": "I'm doing great, thank you for asking. Excited to chat with you today." },
+    { "label": "Detailed", "say_this": "I'm doing well, thank you! I'm excited to be here and to learn more about the role and the team." }
+  ]
+}
+`
 
-  return parts.join('\n\n')
+export const COACH_RESPONSE_SCHEMA: Schema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    question_clean: {
+      type: SchemaType.STRING,
+      description: 'Cleaned transcription of the interviewer question',
+    },
+    category: {
+      type: SchemaType.STRING,
+      description: 'Category: Greeting / Small Talk, Elevator Pitch, Behavioral, Technical, Motivation, Salary, or Unclear',
+    },
+    options: {
+      type: SchemaType.ARRAY,
+      description: 'Exactly 3 ready-to-say answer options: Short, Balanced, Detailed',
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          label: {
+            type: SchemaType.STRING,
+            format: 'enum',
+            description: 'Option label: Short, Balanced, or Detailed',
+            enum: ['Short', 'Balanced', 'Detailed'],
+          },
+          say_this: {
+            type: SchemaType.STRING,
+            description: 'Ready-to-say answer spoken aloud in first person',
+          },
+        },
+        required: ['label', 'say_this'],
+      },
+    },
+  },
+  required: ['question_clean', 'category', 'options'],
+}
+
+export function buildCoachPromptInputs(
+  interviewerQuestion: string,
+  context: GeminiContext
+): string {
+  const storiesList = (context.stories && context.stories.length > 0)
+    ? context.stories.map((s, idx) => ({
+        id: s.id ? `story-${s.id}` : `story-${idx + 1}`,
+        title: s.title,
+        situation: s.situation,
+        task: s.task,
+        action: s.action,
+        result: s.result,
+        metrics: s.metrics || []
+      }))
+    : []
+
+  const jobParts = [
+    context.position ? `Title: ${context.position}` : '',
+    context.companyInfo ? `Company: ${context.companyInfo}` : '',
+    context.jobDescription ? `Requirements: ${context.jobDescription.slice(0, 1500)}` : ''
+  ].filter(Boolean)
+
+  const lang = context.interviewLanguage || 'English'
+
+  return `[INPUTS]
+- QUESTION: ${interviewerQuestion}
+- PROFILE: ${context.resume || 'General software engineer profile'}
+- STORY_BANK: ${JSON.stringify(storiesList, null, 2)}
+- JOB: ${jobParts.length > 0 ? jobParts.join('\n') : 'Target job interview'}
+- SETTINGS: language (${lang})`
 }
 
 // ─── GeminiClient ─────────────────────────────────────────────────────────────
@@ -57,6 +169,7 @@ export class GeminiClient {
   private genAI: GoogleGenerativeAI
   private context: GeminiContext = {}
   private modelName: string
+  private history: InterviewTurnHistory[] = []
 
   constructor(config: GeminiConfig) {
     this.genAI = new GoogleGenerativeAI(config.apiKey)
@@ -67,8 +180,23 @@ export class GeminiClient {
     this.context = ctx
   }
 
+  addHistory(question: string, storyId?: string | null) {
+    this.history.push({ question, storyId })
+    if (this.history.length > 20) {
+      this.history.shift()
+    }
+  }
+
+  getHistory(): InterviewTurnHistory[] {
+    return [...this.history]
+  }
+
+  clearHistory() {
+    this.history = []
+  }
+
   /**
-   * Stream a response from Gemini given the interviewer's question/prompt.
+   * Stream a structured response from Gemini matching the real-time interview coach schema.
    */
   async streamSuggestion(
     interviewerPrompt: string,
@@ -78,23 +206,31 @@ export class GeminiClient {
   ): Promise<void> {
     const modelsToTry = [
       'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-flash-lite-latest',
       'gemini-3.5-flash',
     ]
     let lastError: unknown = null
+
+    const historySummary = this.history.length > 0
+      ? this.history.map((h, i) => `Q${i + 1}: "${h.question}" (used story_id: ${h.storyId || 'none'})`).join('; ')
+      : 'None'
+
+    const fullPrompt = buildCoachPromptInputs(interviewerPrompt, this.context)
 
     for (const modelName of modelsToTry) {
       try {
         const model = this.genAI.getGenerativeModel({
           model: modelName,
+          systemInstruction: REALTIME_COACH_SYSTEM_PROMPT,
           generationConfig: {
-            temperature: 0.7,
-            topP: 0.9,
-            maxOutputTokens: 300,
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+            responseSchema: COACH_RESPONSE_SCHEMA,
+            maxOutputTokens: 1200,
           },
         })
         const chat = model.startChat()
-        const systemContext = buildSystemPrompt(this.context)
-        const fullPrompt = `[SYSTEM INSTRUCTION]\n${systemContext}\n\n[INTERVIEWER QUESTION]:\n${interviewerPrompt}`
 
         const result = await chat.sendMessageStream(fullPrompt)
 
@@ -104,6 +240,8 @@ export class GeminiClient {
           accumulatedText += chunkText
           onChunk(accumulatedText)
         }
+
+        this.addHistory(interviewerPrompt)
 
         onDone(accumulatedText)
         return
@@ -285,6 +423,67 @@ Generate a comprehensive post-interview debrief. Return a valid JSON object ONLY
 `
   const result = await model.generateContent(prompt)
   return JSON.parse(cleanJsonText(result.response.text()))
+}
+
+export async function extractResumeFromPdf(
+  base64Pdf: string,
+  apiKey: string
+): Promise<{ extractedSummary: string; detectedRole?: string }> {
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const candidateModels = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash',
+  ]
+
+  let lastError: unknown = null
+  for (const modelName of candidateModels) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1200,
+        },
+      })
+
+      const prompt = `You are TUDLOIKO Career AI. Analyze this candidate's PDF resume and extract a comprehensive, well-structured interview profile for the AI Copilot to reference during a live interview.
+
+Extract and format cleanly:
+• CANDIDATE SUMMARY: (2-sentence executive summary of experience level, core specializations, and career highlights)
+• CORE SKILLS & TECH STACK: (Languages, frameworks, databases, cloud, devops, tools, architectures)
+• WORK HISTORY & NOTABLE ACHIEVEMENTS: (Companies/roles, quantifiable achievements with metrics, percentages, throughput numbers, and key responsibilities)
+• NOTABLE PROJECTS: (Project names, tech stacks, problems solved, and architectural highlights)
+• EDUCATION & CREDENTIALS: (Degrees, institutions, relevant certifications)
+
+At the very end of your response, on a new line, add:
+DETECTED_ROLE: [The candidate's primary job title, e.g. "Full-Stack Software Engineer" or "Senior Backend Developer"]
+
+Preserve all technical keywords, metrics, numbers, and project names with high accuracy.`
+
+      const result = await model.generateContent([
+        {
+          inlineData: {
+            mimeType: 'application/pdf',
+            data: base64Pdf,
+          },
+        },
+        prompt,
+      ])
+
+      const raw = result.response.text()
+      const roleMatch = raw.match(/DETECTED_ROLE:\s*(.+)$/m)
+      const detectedRole = roleMatch ? roleMatch[1].trim() : undefined
+      const extractedSummary = raw.replace(/DETECTED_ROLE:\s*.+$/m, '').trim()
+
+      return { extractedSummary, detectedRole }
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  throw lastError || new Error('Failed to extract resume from PDF.')
 }
 
 // ─── Singleton Client Cache ───────────────────────────────────────────────────
